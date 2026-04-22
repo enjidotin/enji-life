@@ -76,7 +76,7 @@ export function SearchableCombobox<Id extends string>({
         <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
       </PopoverTrigger>
       <PopoverContent
-        className="w-[var(--anchor-width)] max-w-[calc(100vw-1rem)] p-0"
+        className="w-[max(var(--anchor-width),16rem)] max-w-[calc(100vw-1rem)] p-0"
         align="start"
       >
         <Command>
@@ -103,16 +103,18 @@ export function SearchableCombobox<Id extends string>({
                   >
                     <Check
                       className={cn(
-                        "mr-2 size-4",
+                        "mr-2 size-4 shrink-0",
                         value === it.id ? "opacity-100" : "opacity-0",
                       )}
                     />
-                    <span className="flex-1 truncate">{it.label}</span>
-                    {it.sublabel && (
-                      <span className="ml-2 shrink-0 text-xs text-neutral-500">
-                        {it.sublabel}
-                      </span>
-                    )}
+                    <div className="flex min-w-0 flex-1 flex-col">
+                      <span className="truncate">{it.label}</span>
+                      {it.sublabel && (
+                        <span className="truncate text-xs text-neutral-500">
+                          {it.sublabel}
+                        </span>
+                      )}
+                    </div>
                   </CommandItem>
                 ))}
               </CommandGroup>

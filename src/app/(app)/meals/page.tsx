@@ -104,35 +104,38 @@ export default function MealsPage() {
           {rows.map((row, idx) => (
             <div
               key={idx}
-              className="grid grid-cols-[1fr_auto_auto] items-center gap-2 sm:grid-cols-[1fr_120px_auto]"
+              className="grid grid-cols-[1fr_auto] items-center gap-2 sm:grid-cols-[1fr_120px_auto]"
             >
-              <FoodCombobox
-                foods={foods ?? []}
-                value={row.foodId}
-                onSelect={(id) => updateRow(idx, { foodId: id })}
-                onCreateNew={(name) => openCreateFood(idx, name)}
-              />
-              <input
-                className={inputClass}
-                type="number"
-                inputMode="decimal"
-                min="0"
-                step="any"
-                placeholder="Qty"
-                value={row.quantity}
-                onChange={(e) =>
-                  updateRow(idx, { quantity: e.target.value })
-                }
-              />
+              <div className="min-w-0">
+                <FoodCombobox
+                  foods={foods ?? []}
+                  value={row.foodId}
+                  onSelect={(id) => updateRow(idx, { foodId: id })}
+                  onCreateNew={(name) => openCreateFood(idx, name)}
+                />
+              </div>
               <Button
                 type="button"
                 variant="ghost"
                 size="icon"
                 onClick={() => removeRow(idx)}
                 aria-label="Remove row"
+                className="sm:order-last"
               >
                 <X className="size-4" />
               </Button>
+              <input
+                className={`${inputClass} col-span-2 sm:col-span-1`}
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="any"
+                placeholder="Quantity"
+                value={row.quantity}
+                onChange={(e) =>
+                  updateRow(idx, { quantity: e.target.value })
+                }
+              />
             </div>
           ))}
 

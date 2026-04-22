@@ -112,9 +112,9 @@ export default function WorkoutsPage() {
           {rows.map((row, idx) => (
             <div
               key={idx}
-              className="grid grid-cols-[1fr_auto] items-center gap-2 sm:grid-cols-[1fr_110px_110px_auto]"
+              className="grid grid-cols-2 items-center gap-2 sm:grid-cols-[1fr_110px_110px_auto]"
             >
-              <div className="col-span-2 sm:col-span-1">
+              <div className="col-span-1 min-w-0 sm:col-span-1">
                 <ExerciseCombobox
                   exercises={exercises ?? []}
                   value={row.exerciseId}
@@ -122,6 +122,16 @@ export default function WorkoutsPage() {
                   onCreateNew={(name) => openCreateExercise(idx, name)}
                 />
               </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => removeRow(idx)}
+                aria-label="Remove row"
+                className="justify-self-end sm:order-last sm:justify-self-auto"
+              >
+                <X className="size-4" />
+              </Button>
               <input
                 className={inputClass}
                 type="number"
@@ -145,15 +155,6 @@ export default function WorkoutsPage() {
                   updateRow(idx, { totalReps: e.target.value })
                 }
               />
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                onClick={() => removeRow(idx)}
-                aria-label="Remove row"
-              >
-                <X className="size-4" />
-              </Button>
             </div>
           ))}
 

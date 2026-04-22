@@ -1,178 +1,195 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { api } from "../../../../convex/_generated/api";
+import { Id } from "../../../../convex/_generated/dataModel";
 import {
   Card,
   PageHeader,
   dangerButtonClass,
   formatDate,
   inputClass,
-  primaryButtonClass,
 } from "@/components/ui";
+import { Button } from "@/components/ui/button";
+import { ExerciseCombobox } from "@/components/ExerciseCombobox";
+import { ExerciseDialog } from "@/components/ExerciseDialog";
+import { Plus, X } from "lucide-react";
+import Link from "next/link";
 
-const NEW_VALUE = "__new__";
+type Row = {
+  exerciseId: Id<"exercises"> | null;
+  maxWeight: string;
+  totalReps: string;
+};
+
+const emptyRow: Row = { exerciseId: null, maxWeight: "", totalReps: "" };
 
 export default function WorkoutsPage() {
   const workouts = useQuery(api.workouts.list);
+  const exercises = useQuery(api.exercises.list);
   const addWorkout = useMutation(api.workouts.add);
   const removeWorkout = useMutation(api.workouts.remove);
 
-  const templates = useMemo(() => {
-    if (!workouts) return [];
-    const seen = new Map<string, (typeof workouts)[number]>();
-    for (const w of workouts) if (!seen.has(w.name)) seen.set(w.name, w);
-    return Array.from(seen.values());
-  }, [workouts]);
-
-  const [selected, setSelected] = useState<string>("");
-  const [name, setName] = useState("");
-  const [category, setCategory] = useState("");
-  const [duration, setDuration] = useState("");
-  const [calories, setCalories] = useState("");
+  const [rows, setRows] = useState<Row[]>([{ ...emptyRow }]);
+  const [durationMinutes, setDurationMinutes] = useState("");
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    if (selected === "" && templates.length > 0) {
-      applyTemplate(templates[0].name);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [templates.length]);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogInitialName, setDialogInitialName] = useState("");
+  const [targetRowIdx, setTargetRowIdx] = useState<number | null>(null);
 
-  const isNew = selected === NEW_VALUE;
-  const pickedTemplate = templates.find((t) => t.name === selected);
-
-  function clearFields() {
-    setName("");
-    setCategory("");
-    setDuration("");
-    setCalories("");
-    setNotes("");
+  function updateRow(idx: number, patch: Partial<Row>) {
+    setRows((prev) => prev.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
+  }
+  function addRow() {
+    setRows((prev) => [...prev, { ...emptyRow }]);
+  }
+  function removeRow(idx: number) {
+    setRows((prev) =>
+      prev.length === 1 ? [{ ...emptyRow }] : prev.filter((_, i) => i !== idx),
+    );
   }
 
-  function applyTemplate(templateName: string) {
-    const t = templates.find((x) => x.name === templateName);
-    if (!t) return;
-    setSelected(templateName);
-    setName(t.name);
-    setCategory(t.category ?? "");
-    setDuration(t.durationMinutes != null ? String(t.durationMinutes) : "");
-    setCalories(t.caloriesBurned != null ? String(t.caloriesBurned) : "");
-    setNotes(t.notes ?? "");
+  function openCreateExercise(rowIdx: number, initialName: string) {
+    setTargetRowIdx(rowIdx);
+    setDialogInitialName(initialName);
+    setDialogOpen(true);
   }
 
-  function onPickChange(value: string) {
-    if (value === NEW_VALUE) {
-      setSelected(NEW_VALUE);
-      clearFields();
-      return;
+  function onExerciseCreated(id: Id<"exercises">) {
+    if (targetRowIdx != null) {
+      updateRow(targetRowIdx, { exerciseId: id });
+      setTargetRowIdx(null);
     }
-    applyTemplate(value);
   }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!name.trim()) return;
+    const items = rows
+      .filter((r) => r.exerciseId)
+      .map((r) => ({
+        exerciseId: r.exerciseId as Id<"exercises">,
+        maxWeight: r.maxWeight ? Number(r.maxWeight) : undefined,
+        totalReps: r.totalReps ? Number(r.totalReps) : undefined,
+      }));
+    if (items.length === 0) return;
     setSubmitting(true);
     try {
       await addWorkout({
-        name: name.trim(),
-        category: category.trim() || undefined,
-        durationMinutes: duration ? Number(duration) : undefined,
-        caloriesBurned: calories ? Number(calories) : undefined,
+        items,
+        durationMinutes: durationMinutes ? Number(durationMinutes) : undefined,
         notes: notes.trim() || undefined,
       });
-      if (isNew) setSelected(name.trim());
+      setRows([{ ...emptyRow }]);
+      setDurationMinutes("");
+      setNotes("");
     } finally {
       setSubmitting(false);
     }
   }
 
+  const canSubmit = rows.some((r) => r.exerciseId);
+
   return (
     <div>
-      <PageHeader title="Workouts" description="Log training sessions." />
+      <div className="mb-5 flex items-start justify-between gap-3 sm:mb-6">
+        <PageHeader
+          title="Workouts"
+          description="Log a session as a list of exercises with max weight and total reps."
+        />
+        <Link
+          href="/exercises"
+          className="mt-1 shrink-0 text-sm text-neutral-500 underline-offset-4 hover:underline"
+        >
+          Manage exercises →
+        </Link>
+      </div>
 
       <Card className="mb-6">
-        <form
-          onSubmit={onSubmit}
-          className="grid grid-cols-2 gap-3 sm:grid-cols-6"
-        >
-          <select
-            className={`${inputClass} col-span-2 sm:col-span-6`}
-            value={selected}
-            onChange={(e) => onPickChange(e.target.value)}
-          >
-            {templates.length === 0 && (
-              <option value="" disabled>
-                No previous workouts — add a new one below
-              </option>
-            )}
-            {templates.map((t) => (
-              <option key={t._id} value={t.name}>
-                {t.name}
-                {t.category ? ` · ${t.category}` : ""}
-                {t.durationMinutes != null ? ` · ${t.durationMinutes}min` : ""}
-              </option>
-            ))}
-            <option value={NEW_VALUE}>+ Add a new workout…</option>
-          </select>
+        <form onSubmit={onSubmit} className="grid gap-3">
+          {rows.map((row, idx) => (
+            <div
+              key={idx}
+              className="grid grid-cols-[1fr_auto] items-center gap-2 sm:grid-cols-[1fr_110px_110px_auto]"
+            >
+              <div className="col-span-2 sm:col-span-1">
+                <ExerciseCombobox
+                  exercises={exercises ?? []}
+                  value={row.exerciseId}
+                  onSelect={(id) => updateRow(idx, { exerciseId: id })}
+                  onCreateNew={(name) => openCreateExercise(idx, name)}
+                />
+              </div>
+              <input
+                className={inputClass}
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="any"
+                placeholder="Max wt"
+                value={row.maxWeight}
+                onChange={(e) =>
+                  updateRow(idx, { maxWeight: e.target.value })
+                }
+              />
+              <input
+                className={inputClass}
+                type="number"
+                inputMode="numeric"
+                min="0"
+                placeholder="Total reps"
+                value={row.totalReps}
+                onChange={(e) =>
+                  updateRow(idx, { totalReps: e.target.value })
+                }
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => removeRow(idx)}
+                aria-label="Remove row"
+              >
+                <X className="size-4" />
+              </Button>
+            </div>
+          ))}
 
-          {isNew && (
+          <div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={addRow}
+            >
+              <Plus className="mr-1 size-4" />
+              Add exercise
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
             <input
-              className={`${inputClass} col-span-2 sm:col-span-6`}
-              placeholder="New workout name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-              autoFocus
+              className={inputClass}
+              type="number"
+              inputMode="numeric"
+              min="0"
+              placeholder="Duration (min)"
+              value={durationMinutes}
+              onChange={(e) => setDurationMinutes(e.target.value)}
             />
-          )}
+            <input
+              className={`${inputClass} sm:col-span-2`}
+              placeholder="Notes (optional)"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
+          </div>
 
-          <input
-            className={`${inputClass} col-span-2 sm:col-span-2`}
-            placeholder="Category (e.g. run)"
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-          />
-          <input
-            className={inputClass}
-            placeholder="Minutes"
-            type="number"
-            inputMode="numeric"
-            min="0"
-            value={duration}
-            onChange={(e) => setDuration(e.target.value)}
-          />
-          <input
-            className={inputClass}
-            placeholder="Calories"
-            type="number"
-            inputMode="numeric"
-            min="0"
-            value={calories}
-            onChange={(e) => setCalories(e.target.value)}
-          />
-          <input
-            className={`${inputClass} col-span-2 sm:col-span-4`}
-            placeholder="Notes (optional)"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-          />
-          <button
-            type="submit"
-            disabled={submitting || (!isNew && !pickedTemplate)}
-            className={`${primaryButtonClass} col-span-2 sm:col-span-2`}
-          >
-            {submitting
-              ? "Logging…"
-              : isNew
-                ? "Add workout"
-                : pickedTemplate
-                  ? `Log ${pickedTemplate.name}`
-                  : "Log workout"}
-          </button>
+          <Button type="submit" disabled={!canSubmit || submitting}>
+            {submitting ? "Logging…" : "Log workout"}
+          </Button>
         </form>
       </Card>
 
@@ -186,26 +203,28 @@ export default function WorkoutsPage() {
             {workouts.map((w) => (
               <li
                 key={w._id}
-                className="flex flex-col gap-1 py-3 sm:flex-row sm:items-center sm:justify-between"
+                className="flex flex-col gap-1 py-3 sm:flex-row sm:items-start sm:justify-between"
               >
-                <div>
+                <div className="min-w-0 flex-1">
                   <div className="font-medium">
-                    {w.name}
-                    {w.category && (
-                      <span className="ml-2 rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300">
-                        {w.category}
-                      </span>
-                    )}
+                    {w.items.map((it) => it.name).join(" + ") || "Workout"}
                   </div>
                   <div className="text-xs text-neutral-500">
                     {formatDate(w.performedAt)}
                     {w.durationMinutes != null &&
                       ` · ${w.durationMinutes} min`}
-                    {w.caloriesBurned != null &&
-                      ` · ${w.caloriesBurned} kcal`}
                   </div>
+                  <ul className="mt-1 space-y-0.5 text-xs text-neutral-500">
+                    {w.items.map((it, i) => (
+                      <li key={i}>
+                        {it.name}
+                        {it.maxWeight != null && ` · ${it.maxWeight} max`}
+                        {it.totalReps != null && ` · ${it.totalReps} reps`}
+                      </li>
+                    ))}
+                  </ul>
                   {w.notes && (
-                    <div className="text-xs text-neutral-500">{w.notes}</div>
+                    <div className="mt-1 text-xs text-neutral-500">{w.notes}</div>
                   )}
                 </div>
                 <button
@@ -219,6 +238,13 @@ export default function WorkoutsPage() {
           </ul>
         )}
       </Card>
+
+      <ExerciseDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        initialName={dialogInitialName}
+        onCreated={onExerciseCreated}
+      />
     </div>
   );
 }

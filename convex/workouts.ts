@@ -17,22 +17,41 @@ export const list = query({
 
 export const add = mutation({
   args: {
-    name: v.string(),
-    category: v.optional(v.string()),
+    items: v.array(
+      v.object({
+        exerciseId: v.id("exercises"),
+        maxWeight: v.optional(v.number()),
+        totalReps: v.optional(v.number()),
+      }),
+    ),
     durationMinutes: v.optional(v.number()),
-    caloriesBurned: v.optional(v.number()),
     notes: v.optional(v.string()),
     performedAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) throw new Error("Not signed in");
+    if (args.items.length === 0)
+      throw new Error("Workout must have at least one exercise");
+
+    const snapshotItems = await Promise.all(
+      args.items.map(async ({ exerciseId, maxWeight, totalReps }) => {
+        const ex = await ctx.db.get(exerciseId);
+        if (!ex || ex.userId !== userId) throw new Error("Exercise not found");
+        return {
+          exerciseId,
+          name: ex.name,
+          category: ex.category,
+          maxWeight,
+          totalReps,
+        };
+      }),
+    );
+
     return await ctx.db.insert("workouts", {
       userId,
-      name: args.name,
-      category: args.category,
+      items: snapshotItems,
       durationMinutes: args.durationMinutes,
-      caloriesBurned: args.caloriesBurned,
       notes: args.notes,
       performedAt: args.performedAt ?? Date.now(),
     });

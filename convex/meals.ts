@@ -17,24 +17,40 @@ export const list = query({
 
 export const add = mutation({
   args: {
-    name: v.string(),
-    calories: v.optional(v.number()),
-    protein: v.optional(v.number()),
-    carbs: v.optional(v.number()),
-    fat: v.optional(v.number()),
+    items: v.array(
+      v.object({
+        foodId: v.id("foods"),
+        quantity: v.number(),
+      }),
+    ),
     notes: v.optional(v.string()),
     consumedAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) throw new Error("Not signed in");
+    if (args.items.length === 0) throw new Error("Meal must have at least one item");
+
+    const snapshotItems = await Promise.all(
+      args.items.map(async ({ foodId, quantity }) => {
+        const food = await ctx.db.get(foodId);
+        if (!food || food.userId !== userId) throw new Error("Food not found");
+        return {
+          foodId,
+          name: food.name,
+          unit: food.unit,
+          quantity,
+          calories: food.calories,
+          protein: food.protein,
+          carbs: food.carbs,
+          fat: food.fat,
+        };
+      }),
+    );
+
     return await ctx.db.insert("meals", {
       userId,
-      name: args.name,
-      calories: args.calories,
-      protein: args.protein,
-      carbs: args.carbs,
-      fat: args.fat,
+      items: snapshotItems,
       notes: args.notes,
       consumedAt: args.consumedAt ?? Date.now(),
     });

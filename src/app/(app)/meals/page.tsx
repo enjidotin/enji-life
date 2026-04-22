@@ -1,193 +1,163 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { api } from "../../../../convex/_generated/api";
+import { Id } from "../../../../convex/_generated/dataModel";
 import {
   Card,
   PageHeader,
   dangerButtonClass,
   formatDate,
   inputClass,
-  primaryButtonClass,
 } from "@/components/ui";
+import { Button } from "@/components/ui/button";
+import { FoodCombobox } from "@/components/FoodCombobox";
+import { FoodDialog } from "@/components/FoodDialog";
+import { mealTotals, roundTotal, formatQty } from "@/lib/meals";
+import { Plus, X } from "lucide-react";
+import Link from "next/link";
 
-const NEW_VALUE = "__new__";
+type Row = { foodId: Id<"foods"> | null; quantity: string };
+
+const emptyRow: Row = { foodId: null, quantity: "1" };
 
 export default function MealsPage() {
   const meals = useQuery(api.meals.list);
+  const foods = useQuery(api.foods.list);
   const addMeal = useMutation(api.meals.add);
   const removeMeal = useMutation(api.meals.remove);
 
-  // Most recent entry per unique meal name → used as templates for the dropdown.
-  const templates = useMemo(() => {
-    if (!meals) return [];
-    const seen = new Map<string, (typeof meals)[number]>();
-    for (const m of meals) if (!seen.has(m.name)) seen.set(m.name, m);
-    return Array.from(seen.values());
-  }, [meals]);
-
-  const [selected, setSelected] = useState<string>("");
-  const [name, setName] = useState("");
-  const [calories, setCalories] = useState("");
-  const [protein, setProtein] = useState("");
-  const [carbs, setCarbs] = useState("");
-  const [fat, setFat] = useState("");
+  const [rows, setRows] = useState<Row[]>([{ ...emptyRow }]);
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  // Default the dropdown to the most recent template whenever the list loads.
-  useEffect(() => {
-    if (selected === "" && templates.length > 0) {
-      applyTemplate(templates[0].name);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [templates.length]);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogInitialName, setDialogInitialName] = useState("");
+  const [targetRowIdx, setTargetRowIdx] = useState<number | null>(null);
 
-  const isNew = selected === NEW_VALUE;
-  const pickedTemplate = templates.find((t) => t.name === selected);
-
-  function clearFields() {
-    setName("");
-    setCalories("");
-    setProtein("");
-    setCarbs("");
-    setFat("");
-    setNotes("");
+  function updateRow(idx: number, patch: Partial<Row>) {
+    setRows((prev) => prev.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
+  }
+  function addRow() {
+    setRows((prev) => [...prev, { ...emptyRow }]);
+  }
+  function removeRow(idx: number) {
+    setRows((prev) =>
+      prev.length === 1 ? [{ ...emptyRow }] : prev.filter((_, i) => i !== idx),
+    );
   }
 
-  function applyTemplate(templateName: string) {
-    const t = templates.find((x) => x.name === templateName);
-    if (!t) return;
-    setSelected(templateName);
-    setName(t.name);
-    setCalories(t.calories != null ? String(t.calories) : "");
-    setProtein(t.protein != null ? String(t.protein) : "");
-    setCarbs(t.carbs != null ? String(t.carbs) : "");
-    setFat(t.fat != null ? String(t.fat) : "");
-    setNotes(t.notes ?? "");
+  function openCreateFood(rowIdx: number, initialName: string) {
+    setTargetRowIdx(rowIdx);
+    setDialogInitialName(initialName);
+    setDialogOpen(true);
   }
 
-  function onPickChange(value: string) {
-    if (value === NEW_VALUE) {
-      setSelected(NEW_VALUE);
-      clearFields();
-      return;
+  function onFoodCreated(id: Id<"foods">) {
+    if (targetRowIdx != null) {
+      updateRow(targetRowIdx, { foodId: id });
+      setTargetRowIdx(null);
     }
-    applyTemplate(value);
   }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!name.trim()) return;
+    const items = rows
+      .filter((r) => r.foodId && Number(r.quantity) > 0)
+      .map((r) => ({
+        foodId: r.foodId as Id<"foods">,
+        quantity: Number(r.quantity),
+      }));
+    if (items.length === 0) return;
     setSubmitting(true);
     try {
-      await addMeal({
-        name: name.trim(),
-        calories: calories ? Number(calories) : undefined,
-        protein: protein ? Number(protein) : undefined,
-        carbs: carbs ? Number(carbs) : undefined,
-        fat: fat ? Number(fat) : undefined,
-        notes: notes.trim() || undefined,
-      });
-      // After logging, re-select the just-added entry as the current template.
-      if (isNew) setSelected(name.trim());
+      await addMeal({ items, notes: notes.trim() || undefined });
+      setRows([{ ...emptyRow }]);
+      setNotes("");
     } finally {
       setSubmitting(false);
     }
   }
 
+  const canSubmit = rows.some(
+    (r) => r.foodId && Number(r.quantity) > 0,
+  );
+
   return (
     <div>
-      <PageHeader title="Meals" description="Log what you ate." />
+      <div className="mb-5 flex items-start justify-between gap-3 sm:mb-6">
+        <PageHeader
+          title="Meals"
+          description="Log what you ate. Pick foods from your library; macros are computed from quantity."
+        />
+        <Link
+          href="/foods"
+          className="mt-1 shrink-0 text-sm text-neutral-500 underline-offset-4 hover:underline"
+        >
+          Manage foods →
+        </Link>
+      </div>
 
       <Card className="mb-6">
-        <form onSubmit={onSubmit} className="grid grid-cols-2 gap-3 sm:grid-cols-6">
-          <select
-            className={`${inputClass} col-span-2 sm:col-span-6`}
-            value={selected}
-            onChange={(e) => onPickChange(e.target.value)}
-          >
-            {templates.length === 0 && (
-              <option value="" disabled>
-                No previous meals — add a new one below
-              </option>
-            )}
-            {templates.map((t) => (
-              <option key={t._id} value={t.name}>
-                {t.name}
-                {t.calories != null ? ` · ${t.calories} kcal` : ""}
-              </option>
-            ))}
-            <option value={NEW_VALUE}>+ Add a new meal…</option>
-          </select>
+        <form onSubmit={onSubmit} className="grid gap-3">
+          {rows.map((row, idx) => (
+            <div
+              key={idx}
+              className="grid grid-cols-[1fr_auto_auto] items-center gap-2 sm:grid-cols-[1fr_120px_auto]"
+            >
+              <FoodCombobox
+                foods={foods ?? []}
+                value={row.foodId}
+                onSelect={(id) => updateRow(idx, { foodId: id })}
+                onCreateNew={(name) => openCreateFood(idx, name)}
+              />
+              <input
+                className={inputClass}
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="any"
+                placeholder="Qty"
+                value={row.quantity}
+                onChange={(e) =>
+                  updateRow(idx, { quantity: e.target.value })
+                }
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => removeRow(idx)}
+                aria-label="Remove row"
+              >
+                <X className="size-4" />
+              </Button>
+            </div>
+          ))}
 
-          {isNew && (
-            <input
-              className={`${inputClass} col-span-2 sm:col-span-6`}
-              placeholder="New meal name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-              autoFocus
-            />
-          )}
+          <div className="flex items-center justify-between">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={addRow}
+            >
+              <Plus className="mr-1 size-4" />
+              Add food
+            </Button>
+          </div>
 
           <input
             className={inputClass}
-            placeholder="kcal"
-            type="number"
-            inputMode="numeric"
-            min="0"
-            value={calories}
-            onChange={(e) => setCalories(e.target.value)}
-          />
-          <input
-            className={inputClass}
-            placeholder="Protein (g)"
-            type="number"
-            inputMode="decimal"
-            min="0"
-            value={protein}
-            onChange={(e) => setProtein(e.target.value)}
-          />
-          <input
-            className={inputClass}
-            placeholder="Carbs (g)"
-            type="number"
-            inputMode="decimal"
-            min="0"
-            value={carbs}
-            onChange={(e) => setCarbs(e.target.value)}
-          />
-          <input
-            className={inputClass}
-            placeholder="Fat (g)"
-            type="number"
-            inputMode="decimal"
-            min="0"
-            value={fat}
-            onChange={(e) => setFat(e.target.value)}
-          />
-          <input
-            className={`${inputClass} col-span-2 sm:col-span-4`}
             placeholder="Notes (optional)"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
           />
-          <button
-            type="submit"
-            disabled={submitting || (!isNew && !pickedTemplate)}
-            className={`${primaryButtonClass} col-span-2 sm:col-span-2`}
-          >
-            {submitting
-              ? "Logging…"
-              : isNew
-                ? "Add meal"
-                : pickedTemplate
-                  ? `Log ${pickedTemplate.name}`
-                  : "Log meal"}
-          </button>
+
+          <Button type="submit" disabled={!canSubmit || submitting}>
+            {submitting ? "Logging…" : "Log meal"}
+          </Button>
         </form>
       </Card>
 
@@ -198,35 +168,55 @@ export default function MealsPage() {
           <p className="text-sm text-neutral-400">No meals yet.</p>
         ) : (
           <ul className="divide-y divide-neutral-100 text-sm dark:divide-neutral-800">
-            {meals.map((m) => (
-              <li
-                key={m._id}
-                className="flex flex-col gap-1 py-3 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div>
-                  <div className="font-medium">{m.name}</div>
-                  <div className="text-xs text-neutral-500">
-                    {formatDate(m.consumedAt)}
-                    {m.calories != null && ` · ${m.calories} kcal`}
-                    {m.protein != null && ` · P ${m.protein}g`}
-                    {m.carbs != null && ` · C ${m.carbs}g`}
-                    {m.fat != null && ` · F ${m.fat}g`}
-                  </div>
-                  {m.notes && (
-                    <div className="text-xs text-neutral-500">{m.notes}</div>
-                  )}
-                </div>
-                <button
-                  onClick={() => removeMeal({ id: m._id })}
-                  className={dangerButtonClass}
+            {meals.map((m) => {
+              const totals = mealTotals(m.items);
+              return (
+                <li
+                  key={m._id}
+                  className="flex flex-col gap-1 py-3 sm:flex-row sm:items-start sm:justify-between"
                 >
-                  Delete
-                </button>
-              </li>
-            ))}
+                  <div className="min-w-0 flex-1">
+                    <div className="font-medium">
+                      {m.items.map((it) => it.name).join(" + ") || "Meal"}
+                    </div>
+                    <div className="text-xs text-neutral-500">
+                      {formatDate(m.consumedAt)}
+                      {totals.calories > 0 &&
+                        ` · ${roundTotal(totals.calories)} kcal`}
+                      {totals.protein > 0 &&
+                        ` · P ${roundTotal(totals.protein)}g`}
+                      {totals.carbs > 0 &&
+                        ` · C ${roundTotal(totals.carbs)}g`}
+                      {totals.fat > 0 && ` · F ${roundTotal(totals.fat)}g`}
+                    </div>
+                    <div className="mt-1 text-xs text-neutral-500">
+                      {m.items
+                        .map((it) => `${formatQty(it.quantity, it.unit)} ${it.name}`)
+                        .join(", ")}
+                    </div>
+                    {m.notes && (
+                      <div className="mt-1 text-xs text-neutral-500">{m.notes}</div>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => removeMeal({ id: m._id })}
+                    className={dangerButtonClass}
+                  >
+                    Delete
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         )}
       </Card>
+
+      <FoodDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        initialName={dialogInitialName}
+        onCreated={onFoodCreated}
+      />
     </div>
   );
 }

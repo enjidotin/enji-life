@@ -3,6 +3,7 @@
 import { useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { Card, PageHeader, formatDate } from "@/components/ui";
+import { mealTotals, roundTotal } from "@/lib/meals";
 
 export default function DashboardPage() {
   const viewer = useQuery(api.users.viewer);
@@ -19,7 +20,7 @@ export default function DashboardPage() {
   const todaysWorkouts =
     workouts?.filter((w) => w.performedAt >= todayStart) ?? [];
   const caloriesToday = todaysMeals.reduce(
-    (sum, m) => sum + (m.calories ?? 0),
+    (sum, m) => sum + mealTotals(m.items).calories,
     0,
   );
   const latestWeight = weights?.[0];
@@ -38,7 +39,9 @@ export default function DashboardPage() {
             {todaysMeals.length}
           </div>
           <div className="mt-1 text-xs text-neutral-500">
-            {caloriesToday ? `${caloriesToday} kcal` : "No calories logged"}
+            {caloriesToday
+              ? `${roundTotal(caloriesToday)} kcal`
+              : "No calories logged"}
           </div>
         </Card>
         <Card>
@@ -84,7 +87,9 @@ export default function DashboardPage() {
                   key={m._id}
                   className="flex items-center justify-between py-2"
                 >
-                  <span>{m.name}</span>
+                  <span className="truncate">
+                    {m.items.map((it) => it.name).join(" + ") || "Meal"}
+                  </span>
                   <span className="text-neutral-500">
                     {formatDate(m.consumedAt)}
                   </span>
@@ -108,7 +113,9 @@ export default function DashboardPage() {
                   key={w._id}
                   className="flex items-center justify-between py-2"
                 >
-                  <span>{w.name}</span>
+                  <span className="truncate">
+                    {w.items.map((it) => it.name).join(" + ") || "Workout"}
+                  </span>
                   <span className="text-neutral-500">
                     {formatDate(w.performedAt)}
                   </span>

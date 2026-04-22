@@ -1,36 +1,77 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Enji Life
 
-## Getting Started
+A Next.js + Convex app for logging meals, workouts, weight, and progress photos, with auth via [Convex Auth](https://labs.convex.dev/auth).
 
-First, run the development server:
+## Stack
+
+- **Next.js 16** (App Router, Turbopack)
+- **Convex** (reactive database, serverless functions, file storage)
+- **Convex Auth** (email + password, no third-party provider needed)
+- **Tailwind CSS v4**
+
+## First-time setup
+
+```bash
+npm install
+```
+
+### 1. Provision the Convex deployment
+
+```bash
+npx convex dev
+```
+
+This prompts you to log in, creates a dev deployment, writes `NEXT_PUBLIC_CONVEX_URL` into `.env.local`, and generates `convex/_generated/`. Leave this process running in one terminal — it watches `convex/` and pushes changes live.
+
+### 2. Set auth environment variables on Convex
+
+Convex Auth needs a JWT keypair and a site URL **on the deployment** (not in `.env.local`):
+
+```bash
+npx @convex-dev/auth
+```
+
+The interactive helper generates the key material and sets the env vars on your Convex deployment (`JWT_PRIVATE_KEY`, `JWKS`, `SITE_URL`). Use `http://localhost:3000` as the SITE_URL for local dev.
+
+### 3. Run the Next.js app
+
+In a second terminal:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000 — you'll be redirected to `/signin`. Create an account and you're in.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Layout
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+convex/
+  schema.ts          # users (from authTables) + meals, workouts, weightLogs, progressPhotos
+  auth.ts            # Password provider wiring
+  auth.config.ts     # JWT provider config
+  http.ts            # Mounts auth HTTP routes
+  meals.ts / workouts.ts / weight.ts / photos.ts / users.ts
 
-## Learn More
+src/
+  middleware.ts                      # Redirects unauth'd users to /signin
+  app/
+    layout.tsx                       # ConvexAuthNextjsServerProvider
+    ConvexClientProvider.tsx         # ConvexAuthNextjsProvider (client)
+    signin/page.tsx
+    (app)/
+      layout.tsx                     # App shell with nav + sign out
+      dashboard/page.tsx
+      meals/page.tsx
+      workouts/page.tsx
+      weight/page.tsx
+      photos/page.tsx
+  components/
+    SignOutButton.tsx
+    ui.tsx
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Deploy
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Push `convex/` to prod with `npx convex deploy`.
+- Deploy the Next.js app to Vercel. Set `NEXT_PUBLIC_CONVEX_URL` to your prod deployment URL, and update `SITE_URL` on the Convex prod deployment to your Vercel URL.

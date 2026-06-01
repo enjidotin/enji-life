@@ -7,24 +7,26 @@ import { Doc, Id } from "../../../../convex/_generated/dataModel";
 import {
   Card,
   PageHeader,
+  chipClass,
   dangerButtonClass,
   formatDate,
   inputClass,
+  pillClass,
+  timeAgo,
 } from "@/components/ui";
 import { Button } from "@/components/ui/button";
+import { DataTable } from "@/components/ui/data-table";
 import { SearchableCombobox } from "@/components/SearchableCombobox";
 import { QuantityStepper } from "@/components/QuantityStepper";
 import { VoiceButton } from "@/components/VoiceButton";
 import { FoodDialog } from "@/components/FoodDialog";
 import { mealTotals, roundTotal, formatQty } from "@/lib/meals";
-import { Sparkles, X, RotateCcw, Clock, Plus } from "lucide-react";
+import { ColumnDef } from "@tanstack/react-table";
+import { Sparkles, X, RotateCcw, Clock, Plus, ChevronDown } from "lucide-react";
+import { cn } from "@/lib/utils";
 import Link from "next/link";
 
-const chipClass =
-  "inline-flex items-center gap-1.5 rounded-full border border-neutral-200 px-3.5 py-2 text-sm text-neutral-600 hover:border-neutral-400 hover:bg-neutral-50 active:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:border-neutral-500 dark:hover:bg-neutral-800";
-
-const pillClass =
-  "rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-medium text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300";
+type Meal = Doc<"meals">;
 
 type Food = Doc<"foods">;
 type MealItem = Doc<"meals">["items"][number];
@@ -134,12 +136,19 @@ export default function MealsPage() {
     setParsing(true);
     setParseError(null);
     try {
-      const { items } = await parseMeal(input);
+      const { items, consumedAt } = await parseMeal({
+        ...input,
+        nowLocal: toLocalInput(new Date()),
+      });
       if (items.length === 0) {
         setParseError("Couldn't find any foods in that. Try rephrasing.");
         return;
       }
       items.forEach((it) => addDraft({ foodId: null, ...it }));
+      if (consumedAt) {
+        setWhenValue(consumedAt);
+        setCustomTime(true);
+      }
       setText("");
     } catch (err) {
       setParseError(err instanceof Error ? err.message : "Something went wrong.");
@@ -212,6 +221,45 @@ export default function MealsPage() {
 
   // Most-recently-used foods first, for one-tap chips.
   const recentFoods = (foods ?? []).slice(0, 12);
+
+  const columns: ColumnDef<Meal, unknown>[] = [
+    {
+      id: "meal",
+      header: "Meal",
+      cell: ({ row }) => {
+        const kcal = roundTotal(mealTotals(row.original.items).calories);
+        return (
+          <div className="flex items-center gap-2">
+            <span className="block max-w-[52vw] truncate font-medium sm:max-w-md">
+              {row.original.items.map((it) => it.name).join(" + ") || "Meal"}
+            </span>
+            {kcal > 0 && <span className={pillClass}>{kcal} kcal</span>}
+          </div>
+        );
+      },
+    },
+    {
+      id: "when",
+      header: "When",
+      cell: ({ row }) => (
+        <span className="text-neutral-500">{timeAgo(row.original.consumedAt)}</span>
+      ),
+      meta: { headClassName: "text-right", cellClassName: "text-right" },
+    },
+    {
+      id: "expander",
+      header: () => null,
+      cell: ({ row }) => (
+        <ChevronDown
+          className={cn(
+            "ml-auto size-4 text-neutral-400 transition-transform",
+            row.getIsExpanded() && "rotate-180",
+          )}
+        />
+      ),
+      meta: { headClassName: "w-8", cellClassName: "w-8" },
+    },
+  ];
 
   return (
     <div className={drafts.length > 0 ? "pb-24 sm:pb-0" : undefined}>
@@ -433,44 +481,40 @@ export default function MealsPage() {
       <Card>
         {meals === undefined ? (
           <p className="text-sm text-neutral-400">Loading…</p>
-        ) : meals.length === 0 ? (
-          <p className="text-sm text-neutral-400">No meals yet.</p>
         ) : (
-          <ul className="divide-y divide-neutral-100 text-sm dark:divide-neutral-800">
-            {meals.map((m) => {
+          <DataTable<Meal>
+            columns={columns}
+            data={meals}
+            emptyText="No meals yet."
+            renderSubRow={(row) => {
+              const m = row.original;
               const totals = mealTotals(m.items);
               return (
-                <li key={m._id} className="py-3">
-                  <div className="font-medium">
-                    {m.items.map((it) => it.name).join(" + ") || "Meal"}
-                  </div>
-                  <div className="mt-0.5 text-xs text-neutral-500">
+                <div className="px-4 py-3 text-sm">
+                  <div className="text-xs text-neutral-500">
                     {formatDate(m.consumedAt)}
                   </div>
-                  {(totals.calories > 0 ||
-                    totals.protein > 0 ||
-                    totals.carbs > 0 ||
-                    totals.fat > 0) && (
-                    <div className="mt-1.5 flex flex-wrap gap-1.5">
-                      {totals.calories > 0 && (
-                        <span className={pillClass}>{roundTotal(totals.calories)} kcal</span>
-                      )}
-                      {totals.protein > 0 && (
-                        <span className={pillClass}>P {roundTotal(totals.protein)}g</span>
-                      )}
-                      {totals.carbs > 0 && (
-                        <span className={pillClass}>C {roundTotal(totals.carbs)}g</span>
-                      )}
-                      {totals.fat > 0 && (
-                        <span className={pillClass}>F {roundTotal(totals.fat)}g</span>
-                      )}
-                    </div>
-                  )}
-                  <div className="mt-1.5 text-xs text-neutral-500">
-                    {m.items
-                      .map((it) => `${formatQty(it.quantity, it.unit)} ${it.name}`)
-                      .join(", ")}
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {totals.calories > 0 && (
+                      <span className={pillClass}>{roundTotal(totals.calories)} kcal</span>
+                    )}
+                    {totals.protein > 0 && (
+                      <span className={pillClass}>P {roundTotal(totals.protein)}g</span>
+                    )}
+                    {totals.carbs > 0 && (
+                      <span className={pillClass}>C {roundTotal(totals.carbs)}g</span>
+                    )}
+                    {totals.fat > 0 && (
+                      <span className={pillClass}>F {roundTotal(totals.fat)}g</span>
+                    )}
                   </div>
+                  <ul className="mt-2 space-y-0.5 text-neutral-600 dark:text-neutral-300">
+                    {m.items.map((it, i) => (
+                      <li key={i}>
+                        {formatQty(it.quantity, it.unit)} {it.name}
+                      </li>
+                    ))}
+                  </ul>
                   {m.notes && (
                     <div className="mt-1 text-xs text-neutral-500">{m.notes}</div>
                   )}
@@ -489,10 +533,10 @@ export default function MealsPage() {
                       Delete
                     </button>
                   </div>
-                </li>
+                </div>
               );
-            })}
-          </ul>
+            }}
+          />
         )}
       </Card>
 

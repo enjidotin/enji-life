@@ -10,6 +10,7 @@ import {
   formatDate,
   inputClass,
   primaryButtonClass,
+  timeAgo,
 } from "@/components/ui";
 
 export default function PhotosPage() {
@@ -131,7 +132,7 @@ export default function PhotosPage() {
                     {p.caption ?? formatDate(p.takenAt)}
                   </div>
                   <div className="text-xs text-neutral-500">
-                    {formatDate(p.takenAt)}
+                    {timeAgo(p.takenAt)}
                     {p.weight != null && ` · ${p.weight}`}
                   </div>
                 </div>

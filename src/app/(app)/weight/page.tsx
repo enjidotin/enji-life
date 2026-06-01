@@ -2,7 +2,10 @@
 
 import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
+import { ColumnDef } from "@tanstack/react-table";
+import { ChevronDown } from "lucide-react";
 import { api } from "../../../../convex/_generated/api";
+import { Doc } from "../../../../convex/_generated/dataModel";
 import {
   Card,
   PageHeader,
@@ -10,7 +13,12 @@ import {
   formatDate,
   inputClass,
   primaryButtonClass,
+  timeAgo,
 } from "@/components/ui";
+import { DataTable } from "@/components/ui/data-table";
+import { cn } from "@/lib/utils";
+
+type WeightLog = Doc<"weightLogs">;
 
 export default function WeightPage() {
   const logs = useQuery(api.weight.list);
@@ -42,6 +50,39 @@ export default function WeightPage() {
   const values = logs?.map((l) => l.weight) ?? [];
   const min = values.length ? Math.min(...values) : 0;
   const max = values.length ? Math.max(...values) : 0;
+
+  const columns: ColumnDef<WeightLog, unknown>[] = [
+    {
+      id: "weight",
+      header: "Weight",
+      cell: ({ row }) => (
+        <span className="font-medium">
+          {row.original.weight} {row.original.unit}
+        </span>
+      ),
+    },
+    {
+      id: "when",
+      header: "When",
+      cell: ({ row }) => (
+        <span className="text-neutral-500">{timeAgo(row.original.loggedAt)}</span>
+      ),
+      meta: { headClassName: "text-right", cellClassName: "text-right" },
+    },
+    {
+      id: "expander",
+      header: () => null,
+      cell: ({ row }) => (
+        <ChevronDown
+          className={cn(
+            "ml-auto size-4 text-neutral-400 transition-transform",
+            row.getIsExpanded() && "rotate-180",
+          )}
+        />
+      ),
+      meta: { headClassName: "w-8", cellClassName: "w-8" },
+    },
+  ];
 
   return (
     <div>
@@ -109,33 +150,40 @@ export default function WeightPage() {
       <Card>
         {logs === undefined ? (
           <p className="text-sm text-neutral-400">Loading…</p>
-        ) : logs.length === 0 ? (
-          <p className="text-sm text-neutral-400">No weight logs yet.</p>
         ) : (
-          <ul className="divide-y divide-neutral-100 text-sm dark:divide-neutral-800">
-            {logs.map((l) => (
-              <li
-                key={l._id}
-                className="flex items-center justify-between py-3"
-              >
-                <div>
-                  <div className="font-medium">
-                    {l.weight} {l.unit}
-                  </div>
-                  <div className="text-xs text-neutral-500">
-                    {formatDate(l.loggedAt)}
-                    {l.notes ? ` · ${l.notes}` : ""}
-                  </div>
+          <DataTable<WeightLog>
+            columns={columns}
+            data={logs}
+            emptyText="No weight logs yet."
+            renderSubRow={(row) => {
+              const l = row.original;
+              const older = logs[row.index + 1];
+              const delta = older
+                ? Math.round((l.weight - older.weight) * 10) / 10
+                : null;
+              return (
+                <div className="px-4 py-3 text-sm">
+                  <div className="text-neutral-500">{formatDate(l.loggedAt)}</div>
+                  {delta !== null && delta !== 0 && (
+                    <div className="mt-1 text-xs text-neutral-500">
+                      {delta > 0 ? `▲ +${delta}` : `▼ ${delta}`} {l.unit} vs previous
+                    </div>
+                  )}
+                  {l.notes && (
+                    <div className="mt-1 text-neutral-600 dark:text-neutral-300">
+                      {l.notes}
+                    </div>
+                  )}
+                  <button
+                    onClick={() => removeLog({ id: l._id })}
+                    className={`${dangerButtonClass} mt-2`}
+                  >
+                    Delete
+                  </button>
                 </div>
-                <button
-                  onClick={() => removeLog({ id: l._id })}
-                  className={dangerButtonClass}
-                >
-                  Delete
-                </button>
-              </li>
-            ))}
-          </ul>
+              );
+            }}
+          />
         )}
       </Card>
     </div>

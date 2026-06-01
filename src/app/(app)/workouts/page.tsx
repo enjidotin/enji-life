@@ -7,19 +7,26 @@ import { Doc, Id } from "../../../../convex/_generated/dataModel";
 import {
   Card,
   PageHeader,
+  chipClass,
   dangerButtonClass,
   formatDate,
   inputClass,
+  pillClass,
+  timeAgo,
 } from "@/components/ui";
 import { Button } from "@/components/ui/button";
+import { DataTable } from "@/components/ui/data-table";
 import { SearchableCombobox } from "@/components/SearchableCombobox";
 import { QuantityStepper } from "@/components/QuantityStepper";
 import { VoiceButton } from "@/components/VoiceButton";
 import { ExerciseDialog } from "@/components/ExerciseDialog";
-import { Sparkles, X, RotateCcw, Clock, Plus, Timer } from "lucide-react";
+import { ColumnDef } from "@tanstack/react-table";
+import { Sparkles, X, RotateCcw, Clock, Plus, Timer, ChevronDown } from "lucide-react";
+import { cn } from "@/lib/utils";
 import Link from "next/link";
 
 type Exercise = Doc<"exercises">;
+type Workout = Doc<"workouts">;
 type WorkoutItem = Doc<"workouts">["items"][number];
 
 type Draft = {
@@ -30,12 +37,6 @@ type Draft = {
   maxWeight: number; // 0 = unset
   totalReps: number; // 0 = unset
 };
-
-const chipClass =
-  "inline-flex items-center gap-1.5 rounded-full border border-neutral-200 px-3.5 py-2 text-sm text-neutral-600 hover:border-neutral-400 hover:bg-neutral-50 active:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:border-neutral-500 dark:hover:bg-neutral-800";
-
-const pillClass =
-  "rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-medium text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300";
 
 function toLocalInput(d: Date) {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -122,7 +123,11 @@ export default function WorkoutsPage() {
     setParsing(true);
     setParseError(null);
     try {
-      const { items, durationMinutes: dur } = await parseWorkout(input);
+      const {
+        items,
+        durationMinutes: dur,
+        performedAt,
+      } = await parseWorkout({ ...input, nowLocal: toLocalInput(new Date()) });
       if (items.length === 0) {
         setParseError("Couldn't find any exercises in that. Try rephrasing.");
         return;
@@ -139,6 +144,10 @@ export default function WorkoutsPage() {
       if (dur && !durationMinutes) {
         setDurationMinutes(String(dur));
         setShowDuration(true);
+      }
+      if (performedAt) {
+        setWhenValue(performedAt);
+        setCustomTime(true);
       }
       setText("");
     } catch (err) {
@@ -198,6 +207,45 @@ export default function WorkoutsPage() {
   }
 
   const recentExercises = (exercises ?? []).slice(0, 12);
+
+  const columns: ColumnDef<Workout, unknown>[] = [
+    {
+      id: "workout",
+      header: "Workout",
+      cell: ({ row }) => (
+        <div className="flex items-center gap-2">
+          <span className="block max-w-[52vw] truncate font-medium sm:max-w-md">
+            {row.original.items.map((it) => it.name).join(" + ") || "Workout"}
+          </span>
+          <span className={pillClass}>
+            {row.original.items.length} ex
+            {row.original.items.length === 1 ? "" : "s"}
+          </span>
+        </div>
+      ),
+    },
+    {
+      id: "when",
+      header: "When",
+      cell: ({ row }) => (
+        <span className="text-neutral-500">{timeAgo(row.original.performedAt)}</span>
+      ),
+      meta: { headClassName: "text-right", cellClassName: "text-right" },
+    },
+    {
+      id: "expander",
+      header: () => null,
+      cell: ({ row }) => (
+        <ChevronDown
+          className={cn(
+            "ml-auto size-4 text-neutral-400 transition-transform",
+            row.getIsExpanded() && "rotate-180",
+          )}
+        />
+      ),
+      meta: { headClassName: "w-8", cellClassName: "w-8" },
+    },
+  ];
 
   return (
     <div className={drafts.length > 0 ? "pb-24 sm:pb-0" : undefined}>
@@ -441,51 +489,52 @@ export default function WorkoutsPage() {
       <Card>
         {workouts === undefined ? (
           <p className="text-sm text-neutral-400">Loading…</p>
-        ) : workouts.length === 0 ? (
-          <p className="text-sm text-neutral-400">No workouts yet.</p>
         ) : (
-          <ul className="divide-y divide-neutral-100 text-sm dark:divide-neutral-800">
-            {workouts.map((w) => (
-              <li key={w._id} className="py-3">
-                <div className="font-medium">
-                  {w.items.map((it) => it.name).join(" + ") || "Workout"}
-                </div>
-                <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-neutral-500">
-                  <span>{formatDate(w.performedAt)}</span>
-                  {w.durationMinutes != null && (
-                    <span className={pillClass}>{w.durationMinutes} min</span>
+          <DataTable<Workout>
+            columns={columns}
+            data={workouts}
+            emptyText="No workouts yet."
+            renderSubRow={(row) => {
+              const w = row.original;
+              return (
+                <div className="px-4 py-3 text-sm">
+                  <div className="flex flex-wrap items-center gap-1.5 text-xs text-neutral-500">
+                    <span>{formatDate(w.performedAt)}</span>
+                    {w.durationMinutes != null && (
+                      <span className={pillClass}>{w.durationMinutes} min</span>
+                    )}
+                  </div>
+                  <ul className="mt-2 space-y-0.5 text-neutral-600 dark:text-neutral-300">
+                    {w.items.map((it, i) => (
+                      <li key={i}>
+                        {it.name}
+                        {it.maxWeight != null && ` · ${it.maxWeight} max`}
+                        {it.totalReps != null && ` · ${it.totalReps} reps`}
+                      </li>
+                    ))}
+                  </ul>
+                  {w.notes && (
+                    <div className="mt-1 text-xs text-neutral-500">{w.notes}</div>
                   )}
+                  <div className="mt-2.5 flex gap-2">
+                    <button
+                      onClick={() => addWorkoutItems(w.items)}
+                      className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-md border border-neutral-200 py-2 text-xs font-medium text-neutral-700 hover:border-neutral-400 hover:bg-neutral-50 active:bg-neutral-100 sm:flex-none sm:px-3 dark:border-neutral-700 dark:text-neutral-200 dark:hover:border-neutral-600 dark:hover:bg-neutral-800"
+                    >
+                      <RotateCcw className="size-3.5" />
+                      Repeat
+                    </button>
+                    <button
+                      onClick={() => removeWorkout({ id: w._id })}
+                      className={dangerButtonClass}
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
-                <ul className="mt-1.5 space-y-0.5 text-xs text-neutral-500">
-                  {w.items.map((it, i) => (
-                    <li key={i}>
-                      {it.name}
-                      {it.maxWeight != null && ` · ${it.maxWeight} max`}
-                      {it.totalReps != null && ` · ${it.totalReps} reps`}
-                    </li>
-                  ))}
-                </ul>
-                {w.notes && (
-                  <div className="mt-1 text-xs text-neutral-500">{w.notes}</div>
-                )}
-                <div className="mt-2.5 flex gap-2">
-                  <button
-                    onClick={() => addWorkoutItems(w.items)}
-                    className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-md border border-neutral-200 py-2 text-xs font-medium text-neutral-700 hover:border-neutral-400 hover:bg-neutral-50 active:bg-neutral-100 sm:flex-none sm:px-3 dark:border-neutral-700 dark:text-neutral-200 dark:hover:border-neutral-600 dark:hover:bg-neutral-800"
-                  >
-                    <RotateCcw className="size-3.5" />
-                    Repeat
-                  </button>
-                  <button
-                    onClick={() => removeWorkout({ id: w._id })}
-                    className={dangerButtonClass}
-                  >
-                    Delete
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
+              );
+            }}
+          />
         )}
       </Card>
 

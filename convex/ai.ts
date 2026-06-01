@@ -83,6 +83,25 @@ const num = (x: unknown) => (typeof x === "number" && isFinite(x) ? x : 0);
 const optNum = (x: unknown) =>
   typeof x === "number" && isFinite(x) && x > 0 ? x : undefined;
 
+// Validate a model-produced local timestamp ("YYYY-MM-DDTHH:mm").
+function parseDateTime(x: unknown): string | undefined {
+  return typeof x === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(x.trim())
+    ? x.trim().slice(0, 16)
+    : undefined;
+}
+
+// Prepend the user's current local time so the model can resolve "8am",
+// "yesterday", etc., then append any history context.
+function withNow(nowLocal: string | undefined, history: string | undefined) {
+  const parts = [
+    nowLocal
+      ? `Current local date-time is ${nowLocal} (format YYYY-MM-DDTHH:mm, 24-hour). Resolve any relative times the user says against this.`
+      : null,
+    history ?? null,
+  ].filter((x): x is string => !!x);
+  return parts.length ? parts.join("\n\n") : undefined;
+}
+
 // ---------------------------------------------------------------------------
 // Meals
 // ---------------------------------------------------------------------------
@@ -97,12 +116,14 @@ Rules:
 - "calories", "protein", "carbs", "fat": estimated macros for ONE single unit (not the total). protein/carbs/fat are grams. Be realistic; round sensibly.
 - If the user gives a weight like "200g chicken", use unit "g", quantity 200, and per-gram macros.
 - You may be given the user's food library and recent meals as context. If the user refers to "my usual breakfast", "the same as yesterday", etc., reconstruct it from that history. Prefer the user's known foods (and their macros/units) when a food matches.
+- "consumedAt": if the user mentions WHEN they ate (e.g. "this morning", "at 8am", "yesterday at lunch", "an hour ago", "noon"), resolve it against the current local date-time given in context and return it as a local timestamp in "YYYY-MM-DDTHH:mm" 24-hour format. If no time is mentioned, return null.
 Return ONLY the structured data.`;
 
 const MEAL_SCHEMA = {
   type: "object",
   additionalProperties: false,
   properties: {
+    consumedAt: { type: ["string", "null"] },
     items: {
       type: "array",
       items: {
@@ -121,7 +142,7 @@ const MEAL_SCHEMA = {
       },
     },
   },
-  required: ["items"],
+  required: ["consumedAt", "items"],
 } as const;
 
 export type ParsedMealItem = {
@@ -187,15 +208,19 @@ export const parseMeal = action({
   args: {
     text: v.optional(v.string()),
     audio: v.optional(v.object({ data: v.string(), format: v.string() })),
+    nowLocal: v.optional(v.string()),
   },
-  handler: async (ctx, { text, audio }): Promise<{ items: ParsedMealItem[] }> => {
+  handler: async (
+    ctx,
+    { text, audio, nowLocal },
+  ): Promise<{ items: ParsedMealItem[]; consumedAt?: string }> => {
     const trimmed = (text ?? "").trim();
     if (!trimmed && !audio) return { items: [] };
 
     const context: MealContext = await ctx.runQuery(internal.meals.aiContext, {});
     const parsed = await callOpenRouter({
       system: MEAL_SYSTEM,
-      context: formatMealContext(context),
+      context: withNow(nowLocal, formatMealContext(context)),
       userContent: buildUserContent(
         trimmed,
         audio,
@@ -225,7 +250,7 @@ export const parseMeal = action({
       })
       .filter((x): x is ParsedMealItem => x !== null);
 
-    return { items };
+    return { items, consumedAt: parseDateTime(parsed.consumedAt) };
   },
 });
 
@@ -242,6 +267,7 @@ Rules:
 - "totalReps": total reps across all sets for that exercise, or null if unknown.
 - "durationMinutes": total session length in minutes if mentioned, else null.
 - You may be given the user's exercise library and recent workouts as context. If the user refers to "the usual chest day", "same as last time", a named routine, etc., reconstruct the exercise list (and typical weights/reps) from that history. Prefer exercise names from the user's library when they match.
+- "performedAt": if the user mentions WHEN they trained (e.g. "this morning", "yesterday evening", "an hour ago"), resolve it against the current local date-time given in context and return it as a local timestamp in "YYYY-MM-DDTHH:mm" 24-hour format. If no time is mentioned, return null.
 Return ONLY the structured data.`;
 
 const WORKOUT_SCHEMA = {
@@ -249,6 +275,7 @@ const WORKOUT_SCHEMA = {
   additionalProperties: false,
   properties: {
     durationMinutes: { type: ["number", "null"] },
+    performedAt: { type: ["string", "null"] },
     items: {
       type: "array",
       items: {
@@ -264,7 +291,7 @@ const WORKOUT_SCHEMA = {
       },
     },
   },
-  required: ["durationMinutes", "items"],
+  required: ["durationMinutes", "performedAt", "items"],
 } as const;
 
 export type ParsedWorkoutItem = {
@@ -317,18 +344,23 @@ export const parseWorkout = action({
   args: {
     text: v.optional(v.string()),
     audio: v.optional(v.object({ data: v.string(), format: v.string() })),
+    nowLocal: v.optional(v.string()),
   },
   handler: async (
     ctx,
-    { text, audio },
-  ): Promise<{ items: ParsedWorkoutItem[]; durationMinutes?: number }> => {
+    { text, audio, nowLocal },
+  ): Promise<{
+    items: ParsedWorkoutItem[];
+    durationMinutes?: number;
+    performedAt?: string;
+  }> => {
     const trimmed = (text ?? "").trim();
     if (!trimmed && !audio) return { items: [] };
 
     const context: WorkoutContext = await ctx.runQuery(internal.workouts.aiContext, {});
     const parsed = await callOpenRouter({
       system: WORKOUT_SYSTEM,
-      context: formatWorkoutContext(context),
+      context: withNow(nowLocal, formatWorkoutContext(context)),
       userContent: buildUserContent(
         trimmed,
         audio,
@@ -357,6 +389,10 @@ export const parseWorkout = action({
       })
       .filter((x): x is ParsedWorkoutItem => x !== null);
 
-    return { items, durationMinutes: optNum(parsed.durationMinutes) };
+    return {
+      items,
+      durationMinutes: optNum(parsed.durationMinutes),
+      performedAt: parseDateTime(parsed.performedAt),
+    };
   },
 });

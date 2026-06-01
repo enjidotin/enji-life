@@ -57,6 +57,77 @@ export const add = mutation({
   },
 });
 
+// Log a meal from free-form items (e.g. AI-estimated or repeated from history).
+// Each item is matched to a library food by name, creating it if missing, so
+// every logged food becomes reusable next time.
+export const logItems = mutation({
+  args: {
+    items: v.array(
+      v.object({
+        name: v.string(),
+        unit: v.string(),
+        quantity: v.number(),
+        calories: v.optional(v.number()),
+        protein: v.optional(v.number()),
+        carbs: v.optional(v.number()),
+        fat: v.optional(v.number()),
+      }),
+    ),
+    notes: v.optional(v.string()),
+    consumedAt: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) throw new Error("Not signed in");
+    if (args.items.length === 0) throw new Error("Meal must have at least one item");
+
+    const snapshotItems = [];
+    for (const item of args.items) {
+      const name = item.name.trim();
+      if (!name || item.quantity <= 0) continue;
+
+      const existing = await ctx.db
+        .query("foods")
+        .withIndex("by_user_name", (q) => q.eq("userId", userId).eq("name", name))
+        .first();
+
+      let foodId = existing?._id;
+      // Reuse the library food's macros for consistency; create it if new.
+      const food = existing ?? {
+        name,
+        unit: item.unit.trim() || "serving",
+        calories: item.calories,
+        protein: item.protein,
+        carbs: item.carbs,
+        fat: item.fat,
+      };
+      if (!foodId) {
+        foodId = await ctx.db.insert("foods", { userId, ...food });
+      }
+
+      snapshotItems.push({
+        foodId,
+        name: food.name,
+        unit: food.unit,
+        quantity: item.quantity,
+        calories: food.calories,
+        protein: food.protein,
+        carbs: food.carbs,
+        fat: food.fat,
+      });
+    }
+
+    if (snapshotItems.length === 0) throw new Error("Meal must have at least one item");
+
+    return await ctx.db.insert("meals", {
+      userId,
+      items: snapshotItems,
+      notes: args.notes,
+      consumedAt: args.consumedAt ?? Date.now(),
+    });
+  },
+});
+
 export const remove = mutation({
   args: { id: v.id("meals") },
   handler: async (ctx, { id }) => {

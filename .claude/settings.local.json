@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx convex *)",
+      "Bash(npm run *)",
+      "Bash(git mv *)",
+      "mcp__plugin_context7_context7__query-docs",
+      "Bash(bun --version)",
+      "Bash(bun run *)"
+    ]
+  }
+}

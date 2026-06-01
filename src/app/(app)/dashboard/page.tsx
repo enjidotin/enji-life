@@ -139,14 +139,17 @@ export default function DashboardPage() {
               {meals.slice(0, 5).map((m) => {
                 const kcal = roundTotal(mealTotals(m.items).calories);
                 return (
-                  <li key={m._id} className="flex items-center gap-3 py-2.5">
-                    <span className="min-w-0 flex-1 truncate">
+                  <li
+                    key={m._id}
+                    className="flex flex-col gap-0.5 py-2.5 sm:flex-row sm:items-center sm:gap-3"
+                  >
+                    <span className="truncate font-medium sm:min-w-0 sm:flex-1">
                       {m.items.map((it) => it.name).join(" + ") || "Meal"}
                     </span>
-                    {kcal > 0 && <span className={pillClass}>{kcal} kcal</span>}
-                    <span className="shrink-0 text-xs text-neutral-400">
-                      {timeAgo(m.consumedAt)}
-                    </span>
+                    <div className="flex shrink-0 items-center gap-2 text-xs text-neutral-400">
+                      {kcal > 0 && <span className={pillClass}>{kcal} kcal</span>}
+                      <span>{timeAgo(m.consumedAt)}</span>
+                    </div>
                   </li>
                 );
               })}
@@ -172,16 +175,19 @@ export default function DashboardPage() {
           ) : (
             <ul className="divide-y divide-neutral-100 text-sm dark:divide-neutral-800">
               {workouts.slice(0, 5).map((w) => (
-                <li key={w._id} className="flex items-center gap-3 py-2.5">
-                  <span className="min-w-0 flex-1 truncate">
+                <li
+                  key={w._id}
+                  className="flex flex-col gap-0.5 py-2.5 sm:flex-row sm:items-center sm:gap-3"
+                >
+                  <span className="truncate font-medium sm:min-w-0 sm:flex-1">
                     {w.items.map((it) => it.name).join(" + ") || "Workout"}
                   </span>
-                  <span className={pillClass}>
-                    {w.items.length} ex{w.items.length === 1 ? "" : "s"}
-                  </span>
-                  <span className="shrink-0 text-xs text-neutral-400">
-                    {timeAgo(w.performedAt)}
-                  </span>
+                  <div className="flex shrink-0 items-center gap-2 text-xs text-neutral-400">
+                    <span className={pillClass}>
+                      {w.items.length} ex{w.items.length === 1 ? "" : "s"}
+                    </span>
+                    <span>{timeAgo(w.performedAt)}</span>
+                  </div>
                 </li>
               ))}
             </ul>

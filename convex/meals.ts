@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { mutation, query } from "./_generated/server";
+import { internalQuery, mutation, query } from "./_generated/server";
 
 export const list = query({
   args: {},
@@ -125,6 +125,47 @@ export const logItems = mutation({
       notes: args.notes,
       consumedAt: args.consumedAt ?? Date.now(),
     });
+  },
+});
+
+// Recent history + full food library, for the AI parser's context.
+export const aiContext = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) return { meals: [], foods: [] };
+    const meals = await ctx.db
+      .query("meals")
+      .withIndex("by_user_time", (q) => q.eq("userId", userId))
+      .order("desc")
+      .take(30);
+    const foods = await ctx.db
+      .query("foods")
+      .withIndex("by_user_name", (q) => q.eq("userId", userId))
+      .take(500);
+    return {
+      meals: meals.map((m) => ({
+        consumedAt: m.consumedAt,
+        notes: m.notes,
+        items: m.items.map((it) => ({
+          name: it.name,
+          unit: it.unit,
+          quantity: it.quantity,
+          calories: it.calories,
+          protein: it.protein,
+          carbs: it.carbs,
+          fat: it.fat,
+        })),
+      })),
+      foods: foods.map((f) => ({
+        name: f.name,
+        unit: f.unit,
+        calories: f.calories,
+        protein: f.protein,
+        carbs: f.carbs,
+        fat: f.fat,
+      })),
+    };
   },
 });
 

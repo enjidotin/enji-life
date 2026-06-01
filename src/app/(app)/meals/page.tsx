@@ -17,8 +17,14 @@ import { QuantityStepper } from "@/components/QuantityStepper";
 import { VoiceButton } from "@/components/VoiceButton";
 import { FoodDialog } from "@/components/FoodDialog";
 import { mealTotals, roundTotal, formatQty } from "@/lib/meals";
-import { Sparkles, X, RotateCcw, Clock } from "lucide-react";
+import { Sparkles, X, RotateCcw, Clock, Plus } from "lucide-react";
 import Link from "next/link";
+
+const chipClass =
+  "inline-flex items-center gap-1.5 rounded-full border border-neutral-200 px-3.5 py-2 text-sm text-neutral-600 hover:border-neutral-400 hover:bg-neutral-50 active:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:border-neutral-500 dark:hover:bg-neutral-800";
+
+const pillClass =
+  "rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-medium text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300";
 
 type Food = Doc<"foods">;
 type MealItem = Doc<"meals">["items"][number];
@@ -61,6 +67,11 @@ export default function MealsPage() {
   // Time: default "now". Optionally pick a past time.
   const [customTime, setCustomTime] = useState(false);
   const [whenValue, setWhenValue] = useState("");
+
+  // Secondary controls stay tucked away until tapped (mobile-friendly).
+  const [showText, setShowText] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
+  const [showNotes, setShowNotes] = useState(false);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogInitialName, setDialogInitialName] = useState("");
@@ -178,6 +189,9 @@ export default function MealsPage() {
       setNotes("");
       setCustomTime(false);
       setWhenValue("");
+      setShowText(false);
+      setShowSearch(false);
+      setShowNotes(false);
     } finally {
       setSubmitting(false);
     }
@@ -200,7 +214,7 @@ export default function MealsPage() {
   const recentFoods = (foods ?? []).slice(0, 12);
 
   return (
-    <div>
+    <div className={drafts.length > 0 ? "pb-24 sm:pb-0" : undefined}>
       <div className="mb-5 flex items-start justify-between gap-3 sm:mb-6">
         <PageHeader
           title="Meals"
@@ -215,114 +229,152 @@ export default function MealsPage() {
       </div>
 
       <Card className="mb-6">
-        <div className="grid gap-3">
-          {/* Say what you ate */}
-          <div className="grid gap-2">
-            <textarea
-              className={`${inputClass} min-h-[64px] resize-none`}
-              placeholder="Type or hold Speak — e.g. 2 eggs, toast with butter, a banana"
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              onKeyDown={(e) => {
-                if ((e.metaKey || e.ctrlKey) && e.key === "Enter") onEstimate();
-              }}
-            />
-            <div className="flex gap-2">
+        <div className="grid gap-4">
+          {/* Voice-first entry */}
+          <VoiceButton
+            size="lg"
+            onResult={onVoice}
+            onError={setParseError}
+            disabled={parsing}
+          />
+
+          {/* Type instead (secondary) */}
+          {showText ? (
+            <div className="grid gap-2">
+              <textarea
+                className={`${inputClass} min-h-[64px] w-full resize-none`}
+                placeholder="e.g. 2 eggs, toast with butter, a banana"
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                autoFocus
+                onKeyDown={(e) => {
+                  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") onEstimate();
+                }}
+              />
               <Button
                 type="button"
+                variant="outline"
                 onClick={onEstimate}
                 disabled={!text.trim() || parsing}
-                className="flex-1"
               >
                 <Sparkles className="mr-1.5 size-4" />
                 {parsing ? "Estimating…" : "Estimate macros"}
               </Button>
-              <VoiceButton onResult={onVoice} onError={setParseError} disabled={parsing} />
             </div>
-            {parseError && (
-              <p className="text-xs text-red-600 dark:text-red-400">{parseError}</p>
-            )}
-          </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowText(true)}
+              className="text-center text-xs text-neutral-500 underline-offset-4 hover:underline"
+            >
+              or type it instead
+            </button>
+          )}
+
+          {parseError && (
+            <p className="text-xs text-red-600 dark:text-red-400">{parseError}</p>
+          )}
 
           {/* Draft items */}
           {drafts.length > 0 && (
-            <ul className="grid gap-2 border-t border-neutral-100 pt-3 dark:border-neutral-800">
-              {drafts.map((d) => (
-                <li key={d.key} className="flex items-center gap-2">
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium">{d.name}</div>
-                    <div className="truncate text-xs text-neutral-500">
-                      per {d.unit}
-                      {d.calories != null && ` · ${roundTotal(d.calories)} kcal`}
-                      {d.protein != null && ` · P ${roundTotal(d.protein)}g`}
-                      {d.carbs != null && ` · C ${roundTotal(d.carbs)}g`}
-                      {d.fat != null && ` · F ${roundTotal(d.fat)}g`}
-                    </div>
-                  </div>
-                  <QuantityStepper
-                    value={d.quantity}
-                    onChange={(q) => updateDraft(d.key, { quantity: q })}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => removeDraft(d.key)}
-                    aria-label="Remove item"
-                    className="flex size-9 shrink-0 items-center justify-center text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200"
+            <ul className="grid gap-2 border-t border-neutral-100 pt-4 dark:border-neutral-800">
+              {drafts.map((d) => {
+                const kcal =
+                  d.calories != null ? roundTotal(d.calories * d.quantity) : null;
+                return (
+                  <li
+                    key={d.key}
+                    className="rounded-xl border border-neutral-200 p-3 dark:border-neutral-800"
                   >
-                    <X className="size-4" />
-                  </button>
-                </li>
-              ))}
-              <li className="pt-1 text-right text-xs text-neutral-500">
-                ≈ {roundTotal(draftTotals.calories)} kcal · P{" "}
-                {roundTotal(draftTotals.protein)}g · C {roundTotal(draftTotals.carbs)}g · F{" "}
-                {roundTotal(draftTotals.fat)}g
-              </li>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-medium">{d.name}</div>
+                        <div className="truncate text-xs text-neutral-500">
+                          per {d.unit}
+                          {d.calories != null && ` · ${roundTotal(d.calories)} kcal`}
+                          {d.protein != null && ` · P ${roundTotal(d.protein)}g`}
+                          {d.carbs != null && ` · C ${roundTotal(d.carbs)}g`}
+                          {d.fat != null && ` · F ${roundTotal(d.fat)}g`}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeDraft(d.key)}
+                        aria-label="Remove item"
+                        className="-mr-1 -mt-1 flex size-9 shrink-0 items-center justify-center rounded-md text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+                      >
+                        <X className="size-4" />
+                      </button>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between gap-2">
+                      <span className="text-xs text-neutral-500">
+                        {kcal != null ? `≈ ${kcal} kcal` : " "}
+                      </span>
+                      <QuantityStepper
+                        value={d.quantity}
+                        onChange={(q) => updateDraft(d.key, { quantity: q })}
+                      />
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
 
           {/* Add from your foods */}
-          <div className="grid gap-2 border-t border-neutral-100 pt-3 dark:border-neutral-800">
-            <SearchableCombobox<Id<"foods">>
-              items={(foods ?? []).map((f) => ({
-                id: f._id,
-                label: f.name,
-                sublabel: `per ${f.unit}${f.calories != null ? ` · ${f.calories} kcal` : ""}`,
-                searchValue: `${f.name} ${f.unit}`,
-              }))}
-              value={null}
-              onSelect={(id) => {
-                const f = (foods ?? []).find((x) => x._id === id);
-                if (f) addFood(f);
-              }}
-              onCreateNew={(name) => {
-                setDialogInitialName(name);
-                setDialogOpen(true);
-              }}
-              placeholder="Add a food you've logged before…"
-              emptyText="No matching food."
-              createLabel="Add a new food…"
-            />
-            {recentFoods.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
-                {recentFoods.map((f) => (
-                  <button
-                    key={f._id}
-                    type="button"
-                    onClick={() => addFood(f)}
-                    className="rounded-full border border-neutral-200 px-3 py-1.5 text-xs text-neutral-700 hover:border-neutral-400 hover:bg-neutral-50 active:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:border-neutral-500 dark:hover:bg-neutral-800"
-                  >
-                    {f.name}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          {(recentFoods.length > 0 || (foods?.length ?? 0) > 0) && (
+            <div className="grid gap-3 border-t border-neutral-100 pt-4 dark:border-neutral-800">
+              {recentFoods.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {recentFoods.map((f) => (
+                    <button
+                      key={f._id}
+                      type="button"
+                      onClick={() => addFood(f)}
+                      className="rounded-full border border-neutral-200 px-3.5 py-2 text-sm text-neutral-700 hover:border-neutral-400 hover:bg-neutral-50 active:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:border-neutral-500 dark:hover:bg-neutral-800"
+                    >
+                      + {f.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {showSearch ? (
+                <SearchableCombobox<Id<"foods">>
+                  items={(foods ?? []).map((f) => ({
+                    id: f._id,
+                    label: f.name,
+                    sublabel: `per ${f.unit}${f.calories != null ? ` · ${f.calories} kcal` : ""}`,
+                    searchValue: `${f.name} ${f.unit}`,
+                  }))}
+                  value={null}
+                  onSelect={(id) => {
+                    const f = (foods ?? []).find((x) => x._id === id);
+                    if (f) addFood(f);
+                  }}
+                  onCreateNew={(name) => {
+                    setDialogInitialName(name);
+                    setDialogOpen(true);
+                  }}
+                  placeholder="Search your foods…"
+                  emptyText="No matching food."
+                  createLabel="Add a new food…"
+                />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowSearch(true)}
+                  className="self-start text-xs text-neutral-500 underline-offset-4 hover:underline"
+                >
+                  Search all foods…
+                </button>
+              )}
+            </div>
+          )}
 
-          {/* When */}
-          <div className="text-sm">
+          {/* Time + notes */}
+          <div className="flex flex-wrap items-center gap-2">
             {customTime ? (
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex w-full flex-wrap items-center gap-2">
                 <Clock className="size-4 text-neutral-400" />
                 <input
                   type="datetime-local"
@@ -340,25 +392,39 @@ export default function MealsPage() {
                 </button>
               </div>
             ) : (
+              <button type="button" onClick={enableCustomTime} className={chipClass}>
+                <Clock className="size-3.5" />
+                Now
+              </button>
+            )}
+            {!showNotes && !notes && (
               <button
                 type="button"
-                onClick={enableCustomTime}
-                className="inline-flex items-center gap-1.5 text-xs text-neutral-500 underline-offset-4 hover:underline"
+                onClick={() => setShowNotes(true)}
+                className={chipClass}
               >
-                <Clock className="size-3.5" />
-                Logging for now — set a different time
+                <Plus className="size-3.5" />
+                Note
               </button>
             )}
           </div>
+          {(showNotes || notes) && (
+            <input
+              className={inputClass}
+              placeholder="Notes (optional)"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              autoFocus
+            />
+          )}
 
-          <input
-            className={inputClass}
-            placeholder="Notes (optional)"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-          />
-
-          <Button type="button" onClick={onLog} disabled={drafts.length === 0 || submitting}>
+          {/* Inline log (desktop; mobile uses the sticky bar) */}
+          <Button
+            type="button"
+            onClick={onLog}
+            disabled={drafts.length === 0 || submitting}
+            className="hidden sm:flex"
+          >
             {submitting ? "Logging…" : "Log meal"}
           </Button>
         </div>
@@ -374,34 +440,44 @@ export default function MealsPage() {
             {meals.map((m) => {
               const totals = mealTotals(m.items);
               return (
-                <li
-                  key={m._id}
-                  className="flex flex-col gap-1 py-3 sm:flex-row sm:items-start sm:justify-between"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="font-medium">
-                      {m.items.map((it) => it.name).join(" + ") || "Meal"}
-                    </div>
-                    <div className="text-xs text-neutral-500">
-                      {formatDate(m.consumedAt)}
-                      {totals.calories > 0 && ` · ${roundTotal(totals.calories)} kcal`}
-                      {totals.protein > 0 && ` · P ${roundTotal(totals.protein)}g`}
-                      {totals.carbs > 0 && ` · C ${roundTotal(totals.carbs)}g`}
-                      {totals.fat > 0 && ` · F ${roundTotal(totals.fat)}g`}
-                    </div>
-                    <div className="mt-1 text-xs text-neutral-500">
-                      {m.items
-                        .map((it) => `${formatQty(it.quantity, it.unit)} ${it.name}`)
-                        .join(", ")}
-                    </div>
-                    {m.notes && (
-                      <div className="mt-1 text-xs text-neutral-500">{m.notes}</div>
-                    )}
+                <li key={m._id} className="py-3">
+                  <div className="font-medium">
+                    {m.items.map((it) => it.name).join(" + ") || "Meal"}
                   </div>
-                  <div className="flex shrink-0 items-center gap-2">
+                  <div className="mt-0.5 text-xs text-neutral-500">
+                    {formatDate(m.consumedAt)}
+                  </div>
+                  {(totals.calories > 0 ||
+                    totals.protein > 0 ||
+                    totals.carbs > 0 ||
+                    totals.fat > 0) && (
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {totals.calories > 0 && (
+                        <span className={pillClass}>{roundTotal(totals.calories)} kcal</span>
+                      )}
+                      {totals.protein > 0 && (
+                        <span className={pillClass}>P {roundTotal(totals.protein)}g</span>
+                      )}
+                      {totals.carbs > 0 && (
+                        <span className={pillClass}>C {roundTotal(totals.carbs)}g</span>
+                      )}
+                      {totals.fat > 0 && (
+                        <span className={pillClass}>F {roundTotal(totals.fat)}g</span>
+                      )}
+                    </div>
+                  )}
+                  <div className="mt-1.5 text-xs text-neutral-500">
+                    {m.items
+                      .map((it) => `${formatQty(it.quantity, it.unit)} ${it.name}`)
+                      .join(", ")}
+                  </div>
+                  {m.notes && (
+                    <div className="mt-1 text-xs text-neutral-500">{m.notes}</div>
+                  )}
+                  <div className="mt-2.5 flex gap-2">
                     <button
                       onClick={() => addMealItems(m.items)}
-                      className="inline-flex items-center gap-1 self-start rounded-md border border-neutral-200 px-3 py-2 text-xs text-neutral-600 hover:border-neutral-400 hover:bg-neutral-50 active:bg-neutral-100 sm:px-2 sm:py-1 dark:border-neutral-800 dark:text-neutral-300 dark:hover:border-neutral-600 dark:hover:bg-neutral-800"
+                      className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-md border border-neutral-200 py-2 text-xs font-medium text-neutral-700 hover:border-neutral-400 hover:bg-neutral-50 active:bg-neutral-100 sm:flex-none sm:px-3 dark:border-neutral-700 dark:text-neutral-200 dark:hover:border-neutral-600 dark:hover:bg-neutral-800"
                     >
                       <RotateCcw className="size-3.5" />
                       Repeat
@@ -428,6 +504,25 @@ export default function MealsPage() {
           pendingFoodId.current = id;
         }}
       />
+
+      {/* Sticky log bar (mobile only) */}
+      {drafts.length > 0 && (
+        <div
+          className="fixed inset-x-0 z-30 border-t border-neutral-200 bg-white/95 px-4 py-3 backdrop-blur sm:hidden dark:border-neutral-800 dark:bg-neutral-950/95"
+          style={{ bottom: "calc(env(safe-area-inset-bottom) + 3.5rem)" }}
+        >
+          <Button
+            type="button"
+            onClick={onLog}
+            disabled={submitting}
+            className="h-12 w-full text-base"
+          >
+            {submitting
+              ? "Logging…"
+              : `Log meal · ≈ ${roundTotal(draftTotals.calories)} kcal`}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

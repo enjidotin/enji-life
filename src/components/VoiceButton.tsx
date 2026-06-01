@@ -12,10 +12,12 @@ export function VoiceButton({
   onResult,
   onError,
   disabled,
+  size = "sm",
 }: {
   onResult: (audioBase64: string) => void;
   onError: (message: string) => void;
   disabled?: boolean;
+  size?: "sm" | "lg";
 }) {
   const [state, setState] = useState<State>("idle");
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -85,6 +87,16 @@ export function VoiceButton({
 
   const busy = state === "processing";
   const recording = state === "recording";
+  const lg = size === "lg";
+
+  const label = recording
+    ? "Listening… release to add"
+    : busy
+      ? "Reading…"
+      : lg
+        ? "Hold to speak"
+        : "Speak";
+  const iconSize = lg ? "size-6" : "size-4";
 
   return (
     <button
@@ -99,18 +111,22 @@ export function VoiceButton({
       onPointerCancel={stop}
       aria-label="Hold to speak your meal"
       title="Hold to speak"
-      className={`flex h-9 select-none items-center justify-center gap-1.5 rounded-md border px-3 text-sm font-medium touch-none transition-colors disabled:opacity-60 ${
+      className={`flex select-none touch-none items-center justify-center gap-2 rounded-xl border font-medium transition-colors disabled:opacity-60 ${
+        lg ? "w-full py-4 text-base" : "h-9 rounded-md px-3 text-sm"
+      } ${
         recording
           ? "animate-pulse border-red-500 bg-red-500 text-white"
-          : "border-neutral-300 text-neutral-700 hover:bg-neutral-50 active:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800"
+          : lg
+            ? "border-neutral-900 bg-neutral-900 text-white hover:bg-neutral-800 active:bg-neutral-700 dark:border-neutral-100 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
+            : "border-neutral-300 text-neutral-700 hover:bg-neutral-50 active:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800"
       }`}
     >
       {busy ? (
-        <Loader2 className="size-4 animate-spin" />
+        <Loader2 className={`${iconSize} animate-spin`} />
       ) : (
-        <Mic className="size-4" />
+        <Mic className={iconSize} />
       )}
-      <span>{recording ? "Listening…" : busy ? "Reading…" : "Speak"}</span>
+      <span>{label}</span>
     </button>
   );
 }

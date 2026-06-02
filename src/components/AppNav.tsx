@@ -93,6 +93,23 @@ const items: Item[] = [
     ),
   },
   {
+    href: "/whoop",
+    label: "Whoop",
+    icon: (
+      <svg
+        className={iconClass}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M3 12h4l3-7 4 14 3-7h4" />
+      </svg>
+    ),
+  },
+  {
     href: "/photos",
     label: "Photos",
     icon: (
@@ -149,7 +166,7 @@ export function MobileTabBar() {
       className="fixed inset-x-0 bottom-0 z-40 border-t border-neutral-200 bg-white/95 backdrop-blur pb-[env(safe-area-inset-bottom)] dark:border-neutral-800 dark:bg-neutral-950/95 sm:hidden"
       aria-label="Primary"
     >
-      <ul className="mx-auto grid max-w-5xl grid-cols-5">
+      <ul className="mx-auto grid max-w-5xl grid-cols-6">
         {items.map((item) => {
           const active = isActive(pathname, item.href);
           return (

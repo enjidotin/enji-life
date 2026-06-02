@@ -10,6 +10,7 @@
 
 import type * as ai from "../ai.js";
 import type * as auth from "../auth.js";
+import type * as crons from "../crons.js";
 import type * as exercises from "../exercises.js";
 import type * as foods from "../foods.js";
 import type * as http from "../http.js";
@@ -17,6 +18,7 @@ import type * as meals from "../meals.js";
 import type * as photos from "../photos.js";
 import type * as users from "../users.js";
 import type * as weight from "../weight.js";
+import type * as whoop from "../whoop.js";
 import type * as workouts from "../workouts.js";
 
 import type {
@@ -28,6 +30,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   ai: typeof ai;
   auth: typeof auth;
+  crons: typeof crons;
   exercises: typeof exercises;
   foods: typeof foods;
   http: typeof http;
@@ -35,6 +38,7 @@ declare const fullApi: ApiFromModules<{
   photos: typeof photos;
   users: typeof users;
   weight: typeof weight;
+  whoop: typeof whoop;
   workouts: typeof workouts;
 }>;
 

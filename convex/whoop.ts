@@ -709,12 +709,13 @@ export const data = query({
   handler: async (ctx) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) return null;
+    // ~30 days for the charts (sleep is higher to allow for naps).
     const [sleep, workouts, cycles, recovery] = await Promise.all([
       ctx.db
         .query("whoopSleep")
         .withIndex("by_user_time", (q) => q.eq("userId", userId))
         .order("desc")
-        .take(14),
+        .take(45),
       ctx.db
         .query("whoopWorkouts")
         .withIndex("by_user_time", (q) => q.eq("userId", userId))
@@ -724,12 +725,12 @@ export const data = query({
         .query("whoopCycles")
         .withIndex("by_user_time", (q) => q.eq("userId", userId))
         .order("desc")
-        .take(14),
+        .take(31),
       ctx.db
         .query("whoopRecovery")
         .withIndex("by_user_time", (q) => q.eq("userId", userId))
         .order("desc")
-        .take(14),
+        .take(31),
     ]);
     return { sleep, workouts, cycles, recovery };
   },

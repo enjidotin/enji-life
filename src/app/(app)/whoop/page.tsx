@@ -11,13 +11,11 @@ import {
   primaryButtonClass,
   timeAgo,
 } from "@/components/ui";
-
-function fmtDuration(ms?: number) {
-  if (!ms || ms <= 0) return "–";
-  const h = Math.floor(ms / 3_600_000);
-  const m = Math.round((ms % 3_600_000) / 60_000);
-  return `${h}h ${m}m`;
-}
+import {
+  WhoopInsights,
+  fmtDuration,
+  sleepDuration,
+} from "@/components/WhoopInsights";
 
 function fmtDay(ms: number) {
   return new Date(ms).toLocaleDateString(undefined, {
@@ -37,17 +35,6 @@ function recoveryColor(score?: number) {
   if (score >= 67) return "text-emerald-600 dark:text-emerald-500";
   if (score >= 34) return "text-amber-500";
   return "text-red-500";
-}
-
-// Time actually asleep (in bed minus awake), falling back to the raw window.
-function sleepDuration(s: {
-  start: number;
-  end: number;
-  inBedMilli?: number;
-  awakeMilli?: number;
-}) {
-  if (s.inBedMilli != null) return s.inBedMilli - (s.awakeMilli ?? 0);
-  return s.end - s.start;
 }
 
 export default function WhoopPage() {
@@ -213,6 +200,14 @@ export default function WhoopPage() {
             </Card>
           </div>
 
+          {data && (
+            <WhoopInsights
+              sleep={data.sleep}
+              cycles={data.cycles}
+              recovery={data.recovery}
+            />
+          )}
+
           <div className="grid gap-6 lg:grid-cols-2">
             <Card>
               <h2 className="mb-3 text-base font-medium">Recent sleep</h2>
@@ -224,7 +219,7 @@ export default function WhoopPage() {
                 </p>
               ) : (
                 <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
-                  {data.sleep.map((s) => (
+                  {data.sleep.slice(0, 10).map((s) => (
                     <li
                       key={s._id}
                       className="flex items-center justify-between gap-3 py-2.5 text-sm"
@@ -265,7 +260,7 @@ export default function WhoopPage() {
                 </p>
               ) : (
                 <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
-                  {data.workouts.map((w) => (
+                  {data.workouts.slice(0, 10).map((w) => (
                     <li
                       key={w._id}
                       className="flex items-center justify-between gap-3 py-2.5 text-sm"

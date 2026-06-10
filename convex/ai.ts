@@ -106,17 +106,19 @@ function withNow(nowLocal: string | undefined, history: string | undefined) {
 // Meals
 // ---------------------------------------------------------------------------
 
-const MEAL_SYSTEM = `You are a nutrition estimator. The user describes a meal in plain language. Break it into individual food items and estimate macros.
-
-Rules:
-- One entry per distinct food.
+const MEAL_RULES = `- One entry per distinct food.
 - "name": a short, reusable food name in Title Case (e.g. "Egg", "Whole Wheat Toast", "Banana"). No quantities in the name.
 - "unit": the natural single unit for that food ("egg", "slice", "cup", "serving", "g", "piece", "tbsp", etc.). Default to "serving" if unsure.
 - "quantity": how many of that unit the user ate (a number, may be fractional).
 - "calories", "protein", "carbs", "fat": estimated macros for ONE single unit (not the total). protein/carbs/fat are grams. Be realistic; round sensibly.
 - If the user gives a weight like "200g chicken", use unit "g", quantity 200, and per-gram macros.
 - You may be given the user's food library and recent meals as context. If the user refers to "my usual breakfast", "the same as yesterday", etc., reconstruct it from that history. Prefer the user's known foods (and their macros/units) when a food matches.
-- "consumedAt": if the user mentions WHEN they ate (e.g. "this morning", "at 8am", "yesterday at lunch", "an hour ago", "noon"), resolve it against the current local date-time given in context and return it as a local timestamp in "YYYY-MM-DDTHH:mm" 24-hour format. If no time is mentioned, return null.
+- "consumedAt": if the user mentions WHEN they ate (e.g. "this morning", "at 8am", "yesterday at lunch", "an hour ago", "noon"), resolve it against the current local date-time given in context and return it as a local timestamp in "YYYY-MM-DDTHH:mm" 24-hour format. If no time is mentioned, return null.`;
+
+const MEAL_SYSTEM = `You are a nutrition estimator. The user describes a meal in plain language. Break it into individual food items and estimate macros.
+
+Rules:
+${MEAL_RULES}
 Return ONLY the structured data.`;
 
 const MEAL_SCHEMA = {
@@ -154,6 +156,28 @@ export type ParsedMealItem = {
   carbs: number;
   fat: number;
 };
+
+function normalizeMealItems(raw: unknown): ParsedMealItem[] {
+  const rawItems = Array.isArray(raw) ? raw : [];
+  return rawItems
+    .map((it): ParsedMealItem | null => {
+      if (typeof it !== "object" || it === null) return null;
+      const r = it as Record<string, unknown>;
+      const name = typeof r.name === "string" ? r.name.trim() : "";
+      if (!name) return null;
+      const quantity = num(r.quantity);
+      return {
+        name,
+        unit: typeof r.unit === "string" && r.unit.trim() ? r.unit.trim() : "serving",
+        quantity: quantity > 0 ? quantity : 1,
+        calories: Math.max(0, num(r.calories)),
+        protein: Math.max(0, num(r.protein)),
+        carbs: Math.max(0, num(r.carbs)),
+        fat: Math.max(0, num(r.fat)),
+      };
+    })
+    .filter((x): x is ParsedMealItem => x !== null);
+}
 
 function isoDate(ms: number) {
   return new Date(ms).toISOString().slice(0, 10);
@@ -230,27 +254,10 @@ export const parseMeal = action({
       schema: MEAL_SCHEMA,
     });
 
-    const rawItems = Array.isArray(parsed.items) ? parsed.items : [];
-    const items: ParsedMealItem[] = rawItems
-      .map((it): ParsedMealItem | null => {
-        if (typeof it !== "object" || it === null) return null;
-        const r = it as Record<string, unknown>;
-        const name = typeof r.name === "string" ? r.name.trim() : "";
-        if (!name) return null;
-        const quantity = num(r.quantity);
-        return {
-          name,
-          unit: typeof r.unit === "string" && r.unit.trim() ? r.unit.trim() : "serving",
-          quantity: quantity > 0 ? quantity : 1,
-          calories: Math.max(0, num(r.calories)),
-          protein: Math.max(0, num(r.protein)),
-          carbs: Math.max(0, num(r.carbs)),
-          fat: Math.max(0, num(r.fat)),
-        };
-      })
-      .filter((x): x is ParsedMealItem => x !== null);
-
-    return { items, consumedAt: parseDateTime(parsed.consumedAt) };
+    return {
+      items: normalizeMealItems(parsed.items),
+      consumedAt: parseDateTime(parsed.consumedAt),
+    };
   },
 });
 
@@ -258,16 +265,18 @@ export const parseMeal = action({
 // Workouts
 // ---------------------------------------------------------------------------
 
-const WORKOUT_SYSTEM = `You are a workout logger. The user describes a training session in plain language (possibly something like "the usual chest day" or "same as last leg day"). Break it into exercises.
-
-Rules:
-- "name": a short exercise name in Title Case (e.g. "Bench Press", "Incline Dumbbell Press", "Lat Pulldown").
+const WORKOUT_RULES = `- "name": a short exercise name in Title Case (e.g. "Bench Press", "Incline Dumbbell Press", "Lat Pulldown").
 - "category": the muscle group or type if known ("Chest", "Back", "Legs", "Shoulders", "Arms", "Core", "Cardio"), else null.
 - "maxWeight": the top working weight as a number in the user's usual units, or null if not stated/unknown.
 - "totalReps": total reps across all sets for that exercise, or null if unknown.
 - "durationMinutes": total session length in minutes if mentioned, else null.
 - You may be given the user's exercise library and recent workouts as context. If the user refers to "the usual chest day", "same as last time", a named routine, etc., reconstruct the exercise list (and typical weights/reps) from that history. Prefer exercise names from the user's library when they match.
-- "performedAt": if the user mentions WHEN they trained (e.g. "this morning", "yesterday evening", "an hour ago"), resolve it against the current local date-time given in context and return it as a local timestamp in "YYYY-MM-DDTHH:mm" 24-hour format. If no time is mentioned, return null.
+- "performedAt": if the user mentions WHEN they trained (e.g. "this morning", "yesterday evening", "an hour ago"), resolve it against the current local date-time given in context and return it as a local timestamp in "YYYY-MM-DDTHH:mm" 24-hour format. If no time is mentioned, return null.`;
+
+const WORKOUT_SYSTEM = `You are a workout logger. The user describes a training session in plain language (possibly something like "the usual chest day" or "same as last leg day"). Break it into exercises.
+
+Rules:
+${WORKOUT_RULES}
 Return ONLY the structured data.`;
 
 const WORKOUT_SCHEMA = {
@@ -300,6 +309,27 @@ export type ParsedWorkoutItem = {
   maxWeight?: number;
   totalReps?: number;
 };
+
+function normalizeWorkoutItems(raw: unknown): ParsedWorkoutItem[] {
+  const rawItems = Array.isArray(raw) ? raw : [];
+  return rawItems
+    .map((it): ParsedWorkoutItem | null => {
+      if (typeof it !== "object" || it === null) return null;
+      const r = it as Record<string, unknown>;
+      const name = typeof r.name === "string" ? r.name.trim() : "";
+      if (!name) return null;
+      return {
+        name,
+        category:
+          typeof r.category === "string" && r.category.trim()
+            ? r.category.trim()
+            : undefined,
+        maxWeight: optNum(r.maxWeight),
+        totalReps: optNum(r.totalReps),
+      };
+    })
+    .filter((x): x is ParsedWorkoutItem => x !== null);
+}
 
 type WorkoutContext = {
   workouts: Array<{
@@ -370,29 +400,139 @@ export const parseWorkout = action({
       schema: WORKOUT_SCHEMA,
     });
 
-    const rawItems = Array.isArray(parsed.items) ? parsed.items : [];
-    const items: ParsedWorkoutItem[] = rawItems
-      .map((it): ParsedWorkoutItem | null => {
-        if (typeof it !== "object" || it === null) return null;
-        const r = it as Record<string, unknown>;
-        const name = typeof r.name === "string" ? r.name.trim() : "";
-        if (!name) return null;
-        return {
-          name,
-          category:
-            typeof r.category === "string" && r.category.trim()
-              ? r.category.trim()
-              : undefined,
-          maxWeight: optNum(r.maxWeight),
-          totalReps: optNum(r.totalReps),
-        };
-      })
-      .filter((x): x is ParsedWorkoutItem => x !== null);
-
     return {
-      items,
+      items: normalizeWorkoutItems(parsed.items),
       durationMinutes: optNum(parsed.durationMinutes),
       performedAt: parseDateTime(parsed.performedAt),
     };
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Unified quick log (dashboard: speak once, we figure out what it is)
+// ---------------------------------------------------------------------------
+
+const LOG_SYSTEM = `You are the quick-log assistant for a personal fitness app. The user speaks (or types) ONE log entry. First decide what they are logging, then extract it.
+
+Classification ("kind"):
+- "meal": food or drink they consumed.
+- "workout": a training session or exercises they performed.
+- "weight": a body-weight measurement (e.g. "I'm at 82.4 this morning", "weighed in at 180 pounds").
+- "unknown": none of the above, or you cannot tell.
+
+Fill ONLY the object matching "kind"; set the other two to null. If kind is "unknown", set all three to null.
+
+For "meal", follow these rules:
+${MEAL_RULES}
+
+For "workout", follow these rules:
+${WORKOUT_RULES}
+
+For "weight":
+- "weight": the measurement as a number.
+- "unit": "kg" or "lb" if stated or clearly implied, else null.
+- "loggedAt": if the user mentions WHEN they weighed in, resolve it against the current local date-time given in context and return it as a local "YYYY-MM-DDTHH:mm" timestamp; else null.
+
+Return ONLY the structured data.`;
+
+const LOG_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    kind: { type: "string", enum: ["meal", "workout", "weight", "unknown"] },
+    meal: { ...MEAL_SCHEMA, type: ["object", "null"] },
+    workout: { ...WORKOUT_SCHEMA, type: ["object", "null"] },
+    weight: {
+      type: ["object", "null"],
+      additionalProperties: false,
+      properties: {
+        weight: { type: "number" },
+        unit: { type: ["string", "null"] },
+        loggedAt: { type: ["string", "null"] },
+      },
+      required: ["weight", "unit", "loggedAt"],
+    },
+  },
+  required: ["kind", "meal", "workout", "weight"],
+} as const;
+
+export type ParsedLog =
+  | { kind: "meal"; items: ParsedMealItem[]; consumedAt?: string }
+  | {
+      kind: "workout";
+      items: ParsedWorkoutItem[];
+      durationMinutes?: number;
+      performedAt?: string;
+    }
+  | { kind: "weight"; weight: number; unit?: "kg" | "lb"; loggedAt?: string }
+  | { kind: "none" };
+
+export const parseLog = action({
+  args: {
+    text: v.optional(v.string()),
+    audio: v.optional(v.object({ data: v.string(), format: v.string() })),
+    nowLocal: v.optional(v.string()),
+  },
+  handler: async (ctx, { text, audio, nowLocal }): Promise<ParsedLog> => {
+    const trimmed = (text ?? "").trim();
+    if (!trimmed && !audio) return { kind: "none" };
+
+    const mealCtx: MealContext = await ctx.runQuery(internal.meals.aiContext, {});
+    const workoutCtx: WorkoutContext = await ctx.runQuery(
+      internal.workouts.aiContext,
+      {},
+    );
+    const history = [formatMealContext(mealCtx), formatWorkoutContext(workoutCtx)]
+      .filter((x): x is string => !!x)
+      .join("\n\n");
+
+    const parsed = await callOpenRouter({
+      system: LOG_SYSTEM,
+      context: withNow(nowLocal, history || undefined),
+      userContent: buildUserContent(
+        trimmed,
+        audio,
+        "This audio is one log entry: a meal, a workout, or a body-weight measurement. Identify which and extract it.",
+      ),
+      schemaName: "log",
+      schema: LOG_SCHEMA,
+    });
+
+    if (parsed.kind === "meal" && parsed.meal && typeof parsed.meal === "object") {
+      const m = parsed.meal as Record<string, unknown>;
+      const items = normalizeMealItems(m.items);
+      if (items.length > 0)
+        return { kind: "meal", items, consumedAt: parseDateTime(m.consumedAt) };
+    }
+
+    if (
+      parsed.kind === "workout" &&
+      parsed.workout &&
+      typeof parsed.workout === "object"
+    ) {
+      const w = parsed.workout as Record<string, unknown>;
+      const items = normalizeWorkoutItems(w.items);
+      if (items.length > 0)
+        return {
+          kind: "workout",
+          items,
+          durationMinutes: optNum(w.durationMinutes),
+          performedAt: parseDateTime(w.performedAt),
+        };
+    }
+
+    if (
+      parsed.kind === "weight" &&
+      parsed.weight &&
+      typeof parsed.weight === "object"
+    ) {
+      const r = parsed.weight as Record<string, unknown>;
+      const value = optNum(r.weight);
+      const unit = r.unit === "kg" || r.unit === "lb" ? r.unit : undefined;
+      if (value)
+        return { kind: "weight", weight: value, unit, loggedAt: parseDateTime(r.loggedAt) };
+    }
+
+    return { kind: "none" };
   },
 });

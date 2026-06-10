@@ -4,6 +4,7 @@ import { useQuery } from "convex/react";
 import Link from "next/link";
 import { api } from "../../../../convex/_generated/api";
 import { Card, PageHeader, pillClass, timeAgo } from "@/components/ui";
+import { QuickLog } from "@/components/QuickLog";
 import { mealTotals, roundTotal } from "@/lib/meals";
 import {
   Utensils,
@@ -79,25 +80,28 @@ export default function DashboardPage() {
   ];
 
   return (
-    <div>
+    <div className="min-w-0">
       <PageHeader
         title={`Hi${viewer?.email ? `, ${viewer.email.split("@")[0]}` : ""}`}
         description="Your logs for today."
       />
 
-      {/* Quick log */}
-      <div className="grid grid-cols-3 gap-2 sm:gap-3">
+      {/* Speak once — meal, workout, or weigh-in */}
+      <QuickLog />
+
+      {/* Quick log links */}
+      <div className="mt-4 grid grid-cols-3 gap-2 sm:gap-3">
         {quickActions.map((a) => (
           <Link
             key={a.href}
             href={a.href}
-            className="flex flex-col items-center justify-center gap-1.5 rounded-2xl border border-neutral-200 bg-white py-4 text-sm font-medium shadow-sm transition-colors hover:border-neutral-400 hover:bg-neutral-50 active:bg-neutral-100 dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-neutral-600 dark:hover:bg-neutral-800"
+            className="flex min-w-0 flex-col items-center justify-center gap-1.5 rounded-2xl border border-neutral-200 bg-white py-4 text-sm font-medium shadow-sm transition-colors hover:border-neutral-400 hover:bg-neutral-50 active:bg-neutral-100 dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-neutral-600 dark:hover:bg-neutral-800"
           >
             <span className="relative">
               <a.icon className="size-6" />
               <Plus className="absolute -right-2 -top-1.5 size-3.5 rounded-full bg-neutral-900 p-0.5 text-white dark:bg-neutral-100 dark:text-neutral-900" />
             </span>
-            <span>{a.label}</span>
+            <span className="max-w-full truncate">{a.label}</span>
           </Link>
         ))}
       </div>
@@ -105,13 +109,15 @@ export default function DashboardPage() {
       {/* Today stats */}
       <div className="mt-4 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         {stats.map((s) => (
-          <Link key={s.label} href={s.href} className="group">
-            <Card className="h-full transition-colors group-hover:border-neutral-400 group-active:bg-neutral-50 dark:group-hover:border-neutral-600 dark:group-active:bg-neutral-800/50">
-              <div className="flex items-center justify-between text-neutral-500">
-                <span className="text-xs sm:text-sm">{s.label}</span>
+          <Link key={s.label} href={s.href} className="group min-w-0">
+            <Card className="h-full min-w-0 transition-colors group-hover:border-neutral-400 group-active:bg-neutral-50 dark:group-hover:border-neutral-600 dark:group-active:bg-neutral-800/50">
+              <div className="flex items-center justify-between gap-1 text-neutral-500">
+                <span className="truncate text-xs sm:text-sm">{s.label}</span>
                 <s.icon className="size-4 shrink-0 opacity-60" />
               </div>
-              <div className="mt-1 text-2xl font-semibold">{s.value}</div>
+              <div className="mt-1 truncate text-xl font-semibold sm:text-2xl">
+                {s.value}
+              </div>
               <div className="mt-1 truncate text-xs text-neutral-500">{s.sub}</div>
             </Card>
           </Link>
@@ -120,7 +126,7 @@ export default function DashboardPage() {
 
       {/* Recent */}
       <div className="mt-6 grid gap-4 sm:mt-8 lg:grid-cols-2">
-        <Card>
+        <Card className="min-w-0">
           <div className="mb-2 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-neutral-500">Recent meals</h2>
             <Link
@@ -156,7 +162,7 @@ export default function DashboardPage() {
             </ul>
           )}
         </Card>
-        <Card>
+        <Card className="min-w-0">
           <div className="mb-2 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-neutral-500">
               Recent workouts

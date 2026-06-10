@@ -1,33 +1,45 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { Loader2, Mic } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Loader2, Mic, Square } from "lucide-react";
 import { blobToWavBase64 } from "@/lib/wav";
 
 type State = "idle" | "recording" | "processing";
 
-// Hold to speak. On release, the recording is converted to WAV and handed back
-// via onResult; the parent sends it to the meal parser.
+const MAX_RECORDING_MS = 90_000; // safety net if the user forgets to stop
+
+// Tap to start, tap again to finish. The recording is converted to WAV and
+// handed back via onResult; the parent sends it to the AI parser.
 export function VoiceButton({
   onResult,
   onError,
   disabled,
   size = "sm",
+  idleLabel,
 }: {
   onResult: (audioBase64: string) => void;
   onError: (message: string) => void;
   disabled?: boolean;
   size?: "sm" | "lg";
+  idleLabel?: string;
 }) {
   const [state, setState] = useState<State>("idle");
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
-  const cancelRef = useRef(false); // released before recorder was ready
+  const cancelRef = useRef(false); // stop tapped before recorder was ready
   const startingRef = useRef(false);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      recorderRef.current?.stop();
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+    };
+  }, []);
 
   async function start() {
-    if (state !== "idle" || disabled || startingRef.current) return;
     startingRef.current = true;
     cancelRef.current = false;
     try {
@@ -42,7 +54,8 @@ export function VoiceButton({
       recorderRef.current = recorder;
       recorder.start();
       setState("recording");
-      if (cancelRef.current) recorder.stop(); // pointer already released
+      timeoutRef.current = setTimeout(stop, MAX_RECORDING_MS);
+      if (cancelRef.current) recorder.stop(); // stop tapped while starting
     } catch (err) {
       onError(
         err instanceof DOMException && err.name === "NotAllowedError"
@@ -56,11 +69,25 @@ export function VoiceButton({
   }
 
   function stop() {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
     const recorder = recorderRef.current;
     if (recorder && recorder.state !== "inactive") {
       recorder.stop();
     } else {
       cancelRef.current = true;
+    }
+  }
+
+  function toggle() {
+    if (state === "recording") {
+      stop();
+    } else if (startingRef.current) {
+      cancelRef.current = true;
+    } else if (state === "idle" && !disabled) {
+      void start();
     }
   }
 
@@ -90,28 +117,20 @@ export function VoiceButton({
   const lg = size === "lg";
 
   const label = recording
-    ? "Listening… release to add"
+    ? "Listening… tap when done"
     : busy
-      ? "Reading…"
-      : lg
-        ? "Hold to speak"
-        : "Speak";
+      ? "Thinking…"
+      : (idleLabel ?? (lg ? "Tap to speak" : "Speak"));
   const iconSize = lg ? "size-6" : "size-4";
 
   return (
     <button
       type="button"
       disabled={disabled || busy}
-      onPointerDown={(e) => {
-        e.preventDefault();
-        void start();
-      }}
-      onPointerUp={stop}
-      onPointerLeave={() => recording && stop()}
-      onPointerCancel={stop}
-      aria-label="Hold to speak your meal"
-      title="Hold to speak"
-      className={`flex select-none touch-none items-center justify-center gap-2 rounded-xl border font-medium transition-colors disabled:opacity-60 ${
+      onClick={toggle}
+      aria-label={recording ? "Stop recording" : "Tap to speak"}
+      title={recording ? "Tap to finish" : "Tap to speak"}
+      className={`flex select-none items-center justify-center gap-2 rounded-xl border font-medium transition-colors disabled:opacity-60 ${
         lg ? "w-full py-4 text-base" : "h-9 rounded-md px-3 text-sm"
       } ${
         recording
@@ -123,6 +142,8 @@ export function VoiceButton({
     >
       {busy ? (
         <Loader2 className={`${iconSize} animate-spin`} />
+      ) : recording ? (
+        <Square className={`${iconSize} fill-current`} />
       ) : (
         <Mic className={iconSize} />
       )}
